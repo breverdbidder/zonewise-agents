@@ -76,7 +76,7 @@ _anthropic_client = None
 def get_anthropic():
     global _anthropic_client
     if _anthropic_client is None and ANTHROPIC_API_KEY:
-        _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        _anthropic_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     return _anthropic_client
 
 CLAUDE_SYSTEM_PROMPT = """You are ZoneWise AI, Florida's zoning intelligence assistant.
@@ -552,7 +552,7 @@ async def agent_general(query: str, entities: Dict) -> Dict:
         try:
             stats_data = await get_stats()
             system = CLAUDE_SYSTEM_PROMPT.format(stats=json.dumps(stats_data, default=str))
-            message = client.messages.create(
+            message = await client.messages.create(
                 model="claude-sonnet-4-5-20250929",
                 max_tokens=1024,
                 system=system,
@@ -713,19 +713,20 @@ async def chat_stream(req: ChatRequest):
                         system += f"\n\nDatabase context:\n{context}"
 
                     full_answer = ""
-                    with client.messages.stream(
+                    async with client.messages.stream(
                         model="claude-sonnet-4-5-20250929",
                         max_tokens=1024,
                         system=system,
                         messages=[{"role": "user", "content": req.query}],
                         timeout=30.0,
                     ) as stream:
-                        for text in stream.text_stream:
+                        async for text in stream.text_stream:
                             full_answer += text
                             yield f"data: {json.dumps({'type': 'answer', 'value': full_answer})}\n\n"
                             await asyncio.sleep(0.01)
                 except Exception as e:
-                    print(f"Claude streaming error: {e}")
+                    print(f"Claude streaming error: {type(e).__name__}: {e}")
+                    yield f"data: {json.dumps({'type': 'thinking', 'value': f'Claude error: {type(e).__name__} — falling back...'})}\n\n"
                     # Fallback to regex handler
                     result = await agent_general(req.query, entities)
                     yield f"data: {json.dumps({'type': 'answer', 'value': result.get('answer', '')})}\n\n"
