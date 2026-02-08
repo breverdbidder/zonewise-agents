@@ -6,7 +6,7 @@ Queries REAL data from Supabase across all 67 FL counties
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
@@ -15,6 +15,7 @@ import httpx
 import re
 import asyncio
 from datetime import datetime
+from pathlib import Path
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -709,3 +710,16 @@ async def search_districts(
         f"select=id,code,name,category,jurisdiction_id&or=(code.ilike.%25{q}%25,name.ilike.%25{q}%25)&order=code",
         limit=limit)
     return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# CHAT UI - Serves NLP chatbot with multilingual + Hebrew RTL
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/chat-ui")
+async def chat_ui():
+    """Serve the NLP chatbot interface."""
+    chat_file = Path(__file__).parent / "static" / "chat.html"
+    if chat_file.exists():
+        return FileResponse(chat_file, media_type="text/html")
+    return HTMLResponse("<h1>Chat UI not found</h1>", status_code=404)
