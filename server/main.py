@@ -1,7 +1,8 @@
 """
-ZoneWise Agent API Server v1.0.0
+ZoneWise Agent API Server v1.1.0
 Enterprise-grade FastAPI backend for zoning intelligence
 Queries REAL data from Supabase across all 67 FL counties
+Hybrid: regex intent classification + Claude Sonnet 4.5 for complex queries
 """
 
 from fastapi import FastAPI, HTTPException, Query
@@ -16,6 +17,7 @@ import re
 import asyncio
 from datetime import datetime
 from pathlib import Path
+import anthropic
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -25,7 +27,7 @@ from pathlib import Path
 app = FastAPI(
     title="ZoneWise Agent API",
     description="Enterprise zoning intelligence for all 67 FL counties",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -45,6 +47,7 @@ app.add_middleware(
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://mocerqjnksmhcjzxrewo.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 # Persistent HTTP client for connection pooling
 _http_client: httpx.AsyncClient = None
@@ -62,6 +65,34 @@ async def shutdown():
     global _http_client
     if _http_client and not _http_client.is_closed:
         await _http_client.aclose()
+
+
+# ═══════════════════════════════════════════════════════════════
+# ANTHROPIC CLIENT (Claude Sonnet 4.5 for complex queries)
+# ═══════════════════════════════════════════════════════════════
+
+_anthropic_client = None
+
+def get_anthropic():
+    global _anthropic_client
+    if _anthropic_client is None and ANTHROPIC_API_KEY:
+        _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    return _anthropic_client
+
+CLAUDE_SYSTEM_PROMPT = """You are ZoneWise AI, Florida's zoning intelligence assistant.
+You help users understand zoning codes, setbacks, permitted uses, building envelopes,
+and development feasibility across all 67 Florida counties.
+
+When answering questions:
+- Be specific with zoning codes, setbacks, heights, and densities
+- Reference the jurisdiction and county when known
+- If you don't have specific data in the provided context, say so clearly
+- Use markdown formatting for readability (headers, tables, bold, lists)
+- Keep responses concise but thorough
+- Suggest follow-up queries the user might find helpful
+
+Current platform data: {stats}
+"""
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -505,7 +536,7 @@ async def agent_county_stats(entities: Dict) -> Dict:
 
 
 async def agent_general(query: str, entities: Dict) -> Dict:
-    """Handle general/unknown queries by trying jurisdiction lookup."""
+    """Handle general/unknown queries. Uses Claude for complex questions."""
     jurisdiction = entities.get("jurisdiction")
     if jurisdiction:
         return await agent_list_districts(entities)
@@ -513,6 +544,29 @@ async def agent_general(query: str, entities: Dict) -> Dict:
     code = entities.get("zoning_code")
     if code:
         return await agent_district_detail(entities)
+
+    # Try Claude for intelligent response
+    client = get_anthropic()
+    if client:
+        try:
+            stats_data = await get_stats()
+            system = CLAUDE_SYSTEM_PROMPT.format(stats=json.dumps(stats_data, default=str))
+            message = client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=1024,
+                system=system,
+                messages=[{"role": "user", "content": query}],
+                timeout=25.0,
+            )
+            answer = message.content[0].text
+            return {
+                "answer": answer,
+                "data": None, "citations": [],
+                "suggestions": ["Show zones in Satellite Beach", "What are setbacks for RS-1?",
+                                "How many counties do you cover?"]
+            }
+        except Exception as e:
+            print(f"Anthropic API error: {e}")
 
     return {
         "answer": "Welcome to **ZoneWise.AI** — Florida's zoning intelligence platform.\n\nI can help you with:\n• **Look up zones** — \"What zones are in Satellite Beach?\"\n• **Get requirements** — \"What are the setbacks for RS-1?\"\n• **Find parcel zoning** — \"What zone is parcel 29 3712-00-529?\"\n• **Compare zones** — \"Compare RS-1 vs C-2\"\n• **Platform stats** — \"How many districts do you have?\"\n\nTry asking about any Florida city or county!",
@@ -548,7 +602,7 @@ async def health():
         "status": "healthy" if db_ok else "degraded",
         "database": "connected" if db_ok else "no_key",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0",
+        "version": "1.1.0",
         "counties": 67,
     }
 
@@ -593,27 +647,92 @@ async def chat_endpoint(req: ChatRequest):
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
-    """SSE streaming endpoint for real-time chat UI."""
+    """SSE streaming endpoint for real-time chat UI.
+    Structured intents use fast regex handlers. GENERAL/FEASIBILITY/REPORT
+    stream from Claude Sonnet 4.5 with Supabase context injection.
+    """
     intent = classify_intent(req.query)
     entities = extract_entities(req.query)
 
     async def generate():
         yield f"data: {json.dumps({'type': 'intent', 'value': intent})}\n\n"
         yield f"data: {json.dumps({'type': 'entities', 'value': entities})}\n\n"
-        yield f"data: {json.dumps({'type': 'thinking', 'value': f'Routing to {intent} agent...'})}\n\n"
 
-        handler = AGENT_MAP.get(intent, agent_general)
-        result = await handler(req.query, entities)
+        # Structured intents: fast regex → Supabase
+        if intent in ("LIST_DISTRICTS", "DISTRICT_DETAIL", "COMPARISON",
+                       "PARCEL_LOOKUP", "COUNTY_STATS"):
+            yield f"data: {json.dumps({'type': 'thinking', 'value': f'Querying {intent}...'})}\n\n"
+            handler = AGENT_MAP.get(intent, agent_general)
+            result = await handler(req.query, entities)
+            yield f"data: {json.dumps({'type': 'answer', 'value': result.get('answer', '')})}\n\n"
+            if result.get("data"):
+                yield f"data: {json.dumps({'type': 'data', 'value': result['data']}, default=str)}\n\n"
+            for c in result.get("citations", []):
+                yield f"data: {json.dumps({'type': 'citation', 'value': c})}\n\n"
+            for s in result.get("suggestions", []):
+                yield f"data: {json.dumps({'type': 'suggestion', 'value': s})}\n\n"
+        else:
+            # GENERAL/FEASIBILITY/REPORT: try Claude streaming
+            yield f"data: {json.dumps({'type': 'thinking', 'value': 'Consulting Claude...'})}\n\n"
 
-        yield f"data: {json.dumps({'type': 'thinking', 'value': 'Query complete.'})}\n\n"
-        yield f"data: {json.dumps({'type': 'answer', 'value': result.get('answer', '')})}\n\n"
+            # Gather context from Supabase
+            context_parts = []
+            if entities.get("jurisdiction"):
+                jname = entities["jurisdiction"]
+                jurs = await sb_query("jurisdictions",
+                    f"select=id,name,county&name=ilike.%25{jname}%25", limit=3)
+                if jurs:
+                    context_parts.append(f"Jurisdictions: {json.dumps(jurs)}")
+                    for j in jurs[:1]:
+                        dists = await sb_query("zoning_districts",
+                            f"select=code,name,category&jurisdiction_id=eq.{j['id']}", limit=20)
+                        if dists:
+                            context_parts.append(f"Districts in {j['name']}: {json.dumps(dists)}")
 
-        if result.get("data"):
-            yield f"data: {json.dumps({'type': 'data', 'value': result['data']}, default=str)}\n\n"
-        for c in result.get("citations", []):
-            yield f"data: {json.dumps({'type': 'citation', 'value': c})}\n\n"
-        for s in result.get("suggestions", []):
-            yield f"data: {json.dumps({'type': 'suggestion', 'value': s})}\n\n"
+            if entities.get("zoning_code"):
+                zcode = entities["zoning_code"]
+                dists = await sb_query("zoning_districts",
+                    f"select=id,code,name,description,category&code=ilike.{zcode}", limit=3)
+                if dists:
+                    context_parts.append(f"District data: {json.dumps(dists)}")
+                    for d in dists[:1]:
+                        stds = await sb_query("zone_standards",
+                            f"select=*&zoning_district_id=eq.{d['id']}", limit=1)
+                        if stds:
+                            context_parts.append(f"Standards: {json.dumps(stds)}")
+
+            context = "\n".join(context_parts)
+
+            client = get_anthropic()
+            if client:
+                try:
+                    stats_data = await get_stats()
+                    system = CLAUDE_SYSTEM_PROMPT.format(stats=json.dumps(stats_data, default=str))
+                    if context:
+                        system += f"\n\nDatabase context:\n{context}"
+
+                    full_answer = ""
+                    with client.messages.stream(
+                        model="claude-sonnet-4-5-20250929",
+                        max_tokens=1024,
+                        system=system,
+                        messages=[{"role": "user", "content": req.query}],
+                        timeout=30.0,
+                    ) as stream:
+                        for text in stream.text_stream:
+                            full_answer += text
+                            yield f"data: {json.dumps({'type': 'answer', 'value': full_answer})}\n\n"
+                            await asyncio.sleep(0.01)
+                except Exception as e:
+                    print(f"Claude streaming error: {e}")
+                    # Fallback to regex handler
+                    result = await agent_general(req.query, entities)
+                    yield f"data: {json.dumps({'type': 'answer', 'value': result.get('answer', '')})}\n\n"
+            else:
+                # No API key — regex fallback
+                result = await agent_general(req.query, entities)
+                yield f"data: {json.dumps({'type': 'answer', 'value': result.get('answer', '')})}\n\n"
+
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream",
