@@ -170,13 +170,14 @@ class ChatResponse(BaseModel):
 # ═══════════════════════════════════════════════════════════════
 
 INTENT_RULES = [
+    # COMPARISON first — "compare" is a strong signal that beats partial matches below
+    ("COMPARISON", ["compare", "difference between", "vs ", "versus"]),
+    ("FEASIBILITY", ["can i build", "allowed", "permitted", "feasible",
+                     "what can i", "is it possible"]),
     ("LIST_DISTRICTS", ["what zones", "zoning districts", "list zones", "all zones",
                         "what zoning", "districts in", "zone types"]),
     ("DISTRICT_DETAIL", ["setback", "height limit", "lot size", "density",
                          "far ", "floor area", "building envelope", "requirements for"]),
-    ("COMPARISON", ["compare", "difference between", "vs ", "versus"]),
-    ("FEASIBILITY", ["can i build", "allowed", "permitted", "feasible",
-                     "what can i", "is it possible"]),
     ("PARCEL_LOOKUP", ["parcel", "folio", "property at", "address",
                        "what zone is", "zoned as"]),
     ("REPORT", ["report", "generate", "pdf", "export", "download"]),
@@ -659,7 +660,7 @@ async def chat_stream(req: ChatRequest):
         yield f"data: {json.dumps({'type': 'entities', 'value': entities})}\n\n"
 
         # Structured intents: fast regex → Supabase
-        if intent in ("LIST_DISTRICTS", "DISTRICT_DETAIL", "COMPARISON",
+        if intent in ("LIST_DISTRICTS", "DISTRICT_DETAIL",
                        "PARCEL_LOOKUP", "COUNTY_STATS"):
             yield f"data: {json.dumps({'type': 'thinking', 'value': f'Querying {intent}...'})}\n\n"
             handler = AGENT_MAP.get(intent, agent_general)
