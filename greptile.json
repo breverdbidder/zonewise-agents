@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "rules": [
+    "Enforce TypeScript strict mode - no 'any' types without justification",
+    "All API calls must have error handling with try/catch",
+    "No hardcoded API keys, URLs, or credentials - use environment variables",
+    "All new functions must have JSDoc comments",
+    "React components must have PropTypes or TypeScript interfaces",
+    "No console.log in production code - use structured logging",
+    "Database queries must use parameterized inputs - no string interpolation",
+    "All async functions must handle rejection/errors"
+  ],
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    ".next/**",
+    "*.min.js",
+    "package-lock.json"
+  ]
+}
