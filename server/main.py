@@ -503,13 +503,66 @@ async def agent_parcel_lookup(entities: Dict) -> Dict:
 
 
 async def agent_county_stats(entities: Dict) -> Dict:
-    """Platform statistics and coverage."""
+    """Platform statistics and coverage. Filters to a specific county when mentioned."""
+    county = None
+    # Check if a county was detected (is_county flag) or jurisdiction matches a county name
+    if entities.get("is_county"):
+        county = entities.get("jurisdiction")
+    elif entities.get("jurisdiction"):
+        # Check if the jurisdiction name is actually a county
+        jname = entities["jurisdiction"]
+        for c in FL_COUNTIES:
+            if c.lower() == jname.lower():
+                county = c
+                break
+
+    if county:
+        # County-specific stats
+        juris = await sb_query("jurisdictions",
+            f"select=id,name,county,data_completeness&county=ilike.{county}&order=name",
+            limit=200)
+
+        jids = [str(j["id"]) for j in juris]
+        district_count = 0
+        standards_count = 0
+        if jids:
+            districts = await sb_query("zoning_districts",
+                f"select=id&jurisdiction_id=in.({','.join(jids)})",
+                limit=1000)
+            district_count = len(districts)
+            dids = [str(d["id"]) for d in districts]
+            if dids:
+                standards = await sb_query("zone_standards",
+                    f"select=id&zoning_district_id=in.({','.join(dids[:200])})",
+                    limit=1000)
+                standards_count = len(standards)
+
+        lines = [f"## {county} County — Zoning Data\n",
+                 f"**{len(juris)}** jurisdictions | **{district_count:,}** zoning districts | **{standards_count:,}** dimensional standards\n",
+                 "### Jurisdictions\n",
+                 "| Jurisdiction | Data Completeness |",
+                 "|---|---|"]
+
+        for j in juris:
+            comp = j.get("data_completeness", 0) or 0
+            lines.append(f"| {j['name']} | {comp:.0f}% |")
+
+        lines.append(f"\n_Ask about any jurisdiction: \"Show zones in {juris[0]['name']}\"_" if juris else "")
+
+        return {"answer": "\n".join(lines),
+                "data": {"county": county, "jurisdictions": len(juris),
+                         "districts": district_count, "standards": standards_count,
+                         "jurisdiction_list": [j["name"] for j in juris]},
+                "citations": [],
+                "suggestions": [f"Show zones in {juris[0]['name']}" if juris else "List all counties",
+                                f"What zones are in {county} County?"]}
+
+    # Statewide stats (no county specified)
     juris_count = await sb_count("jurisdictions")
     district_count = await sb_count("zoning_districts")
     standards_count = await sb_count("zone_standards")
     parcel_count = await sb_count("parcel_zones")
 
-    # Get top counties by completeness
     top = await sb_query("jurisdictions",
         "select=county,data_completeness&data_completeness=gte.90&order=data_completeness.desc",
         limit=200)
@@ -528,8 +581,8 @@ async def agent_county_stats(entities: Dict) -> Dict:
              f"| Jurisdictions at 90%+ | **{len(top)}** |",
              f"\n### Top Counties (by 90%+ jurisdictions)\n"]
 
-    for county, count in county_counts.most_common(10):
-        lines.append(f"• **{county}:** {count} jurisdictions at 90%+")
+    for county_name, count in county_counts.most_common(10):
+        lines.append(f"• **{county_name}:** {count} jurisdictions at 90%+")
 
     return {"answer": "\n".join(lines), "data": {"jurisdictions": juris_count, "districts": district_count,
             "standards": standards_count, "parcels": parcel_count, "high_complete": len(top)},
