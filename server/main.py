@@ -725,10 +725,8 @@ async def chat_stream(req: ChatRequest):
                             yield f"data: {json.dumps({'type': 'answer', 'value': full_answer})}\n\n"
                             await asyncio.sleep(0.01)
                 except Exception as e:
-                    err_msg = str(e)[:200]
-                    key_hint = f"key={'set' if ANTHROPIC_API_KEY else 'missing'}({len(ANTHROPIC_API_KEY)}chars,starts={ANTHROPIC_API_KEY[:12]}...)" if ANTHROPIC_API_KEY else "key=EMPTY"
-                    print(f"Claude streaming error: {type(e).__name__}: {err_msg} | {key_hint}")
-                    yield f"data: {json.dumps({'type': 'thinking', 'value': f'Claude error: {type(e).__name__}: {err_msg}'})}\n\n"
+                    print(f"Claude streaming error: {type(e).__name__}: {e}")
+                    yield f"data: {json.dumps({'type': 'thinking', 'value': 'Falling back to structured query...'})}\n\n"
                     # Fallback to regex handler
                     result = await agent_general(req.query, entities)
                     yield f"data: {json.dumps({'type': 'answer', 'value': result.get('answer', '')})}\n\n"
