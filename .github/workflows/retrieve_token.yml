@@ -1,0 +1,13 @@
+name: Retrieve Telegram Token
+on: 
+  workflow_dispatch:
+
+jobs:
+  get-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show Token
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          echo "TELEGRAM_BOT_TOKEN=${TOKEN}"
