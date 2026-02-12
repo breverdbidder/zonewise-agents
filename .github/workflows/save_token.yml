@@ -1,0 +1,19 @@
+name: Save Token to Artifact
+on: workflow_dispatch
+
+jobs:
+  save-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Save Token to File
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          echo "${TOKEN}" > telegram_token.txt
+      
+      - name: Upload Token
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-token
+          path: telegram_token.txt
+          retention-days: 1
