@@ -1,0 +1,41 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Trigger Render Deploy Hook
+        if: secrets.RENDER_DEPLOY_HOOK_URL != ''
+        run: |
+          echo "🚀 Triggering Render deployment..."
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+          echo "✅ Deploy hook triggered! Check Render dashboard for status."
+      
+      - name: Deployment Status
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 ZoneWise Agents Deployment Initiated"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Service: zonewise-agents"
+          echo "Platform: Render.com"
+          echo "Runtime: Python 3.11"
+          echo "Entry: uvicorn server.main:app --host 0.0.0.0 --port \$PORT"
+          echo ""
+          echo "Health Check: https://zonewise-agents.onrender.com/health"
+          echo "API Docs: https://zonewise-agents.onrender.com/docs"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
