@@ -1,0 +1,193 @@
+name: AgentRemote Webhook → Telegram
+
+on:
+  issues:
+    types: [opened, closed, labeled]
+  pull_request:
+    types: [opened, closed, review_requested, synchronize]
+  workflow_run:
+    workflows: ["AgentRemote v3.0 Cloud Executor"]
+    types: [completed]
+  push:
+    branches: [main]
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      test_message:
+        description: 'Test notification message'
+        required: false
+        default: '🧪 Webhook test from GitHub Actions'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+    - name: Build Telegram notification
+      id: message
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        EVENT_ACTION: ${{ github.event.action }}
+        REPO: ${{ github.repository }}
+        SENDER: ${{ github.event.sender.login }}
+        # Issue fields
+        ISSUE_TITLE: ${{ github.event.issue.title }}
+        ISSUE_NUMBER: ${{ github.event.issue.number }}
+        ISSUE_URL: ${{ github.event.issue.html_url }}
+        ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+        # PR fields
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        PR_MERGED: ${{ github.event.pull_request.merged }}
+        PR_REVIEWER: ${{ github.event.requested_reviewer.login }}
+        # Workflow run fields
+        WF_NAME: ${{ github.event.workflow_run.name }}
+        WF_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        WF_URL: ${{ github.event.workflow_run.html_url }}
+        # Push fields
+        PUSH_REF: ${{ github.ref_name }}
+        PUSH_COMMITS: ${{ github.event.commits[0].message }}
+        PUSH_AUTHOR: ${{ github.event.head_commit.author.name }}
+        # Manual test
+        TEST_MSG: ${{ github.event.inputs.test_message }}
+      run: |
+        build_message() {
+          case "$EVENT_NAME" in
+            issues)
+              case "$EVENT_ACTION" in
+                opened)
+                  echo "🆕 *New Issue #${ISSUE_NUMBER}*"
+                  echo ""
+                  echo "📝 ${ISSUE_TITLE}"
+                  echo "👤 By: ${SENDER}"
+                  if [ -n "$ISSUE_LABELS" ]; then
+                    echo "🏷️ Labels: ${ISSUE_LABELS}"
+                  fi
+                  echo ""
+                  echo "🔗 [View Issue](${ISSUE_URL})"
+                  ;;
+                closed)
+                  echo "✅ *Issue #${ISSUE_NUMBER} Closed*"
+                  echo ""
+                  echo "📝 ${ISSUE_TITLE}"
+                  echo "👤 By: ${SENDER}"
+                  echo ""
+                  echo "🔗 [View Issue](${ISSUE_URL})"
+                  ;;
+                labeled)
+                  echo "🏷️ *Issue #${ISSUE_NUMBER} Labeled*"
+                  echo ""
+                  echo "📝 ${ISSUE_TITLE}"
+                  echo "🏷️ Labels: ${ISSUE_LABELS}"
+                  echo ""
+                  echo "🔗 [View Issue](${ISSUE_URL})"
+                  ;;
+              esac
+              ;;
+            pull_request)
+              case "$EVENT_ACTION" in
+                opened)
+                  echo "🔀 *New PR #${PR_NUMBER}*"
+                  echo ""
+                  echo "📝 ${PR_TITLE}"
+                  echo "👤 By: ${SENDER}"
+                  echo ""
+                  echo "🔗 [Review PR](${PR_URL})"
+                  ;;
+                closed)
+                  if [ "$PR_MERGED" = "true" ]; then
+                    echo "🎉 *PR #${PR_NUMBER} Merged!*"
+                  else
+                    echo "❌ *PR #${PR_NUMBER} Closed*"
+                  fi
+                  echo ""
+                  echo "📝 ${PR_TITLE}"
+                  echo "👤 By: ${SENDER}"
+                  echo ""
+                  echo "🔗 [View PR](${PR_URL})"
+                  ;;
+                review_requested)
+                  echo "👀 *Review Requested on PR #${PR_NUMBER}*"
+                  echo ""
+                  echo "📝 ${PR_TITLE}"
+                  echo "👤 Reviewer: ${PR_REVIEWER:-${SENDER}}"
+                  echo ""
+                  echo "🔗 [Review PR](${PR_URL})"
+                  ;;
+                synchronize)
+                  echo "🔄 *PR #${PR_NUMBER} Updated*"
+                  echo ""
+                  echo "📝 ${PR_TITLE}"
+                  echo "👤 By: ${SENDER}"
+                  echo ""
+                  echo "🔗 [View Changes](${PR_URL})"
+                  ;;
+              esac
+              ;;
+            workflow_run)
+              if [ "$WF_CONCLUSION" = "success" ]; then
+                echo "✅ *Workflow Completed*"
+              elif [ "$WF_CONCLUSION" = "failure" ]; then
+                echo "🔴 *Workflow FAILED*"
+              else
+                echo "⚠️ *Workflow: ${WF_CONCLUSION}*"
+              fi
+              echo ""
+              echo "📦 ${WF_NAME}"
+              echo "📊 Result: ${WF_CONCLUSION}"
+              echo ""
+              echo "🔗 [View Run](${WF_URL})"
+              ;;
+            push)
+              echo "📦 *Push to ${PUSH_REF}*"
+              echo ""
+              echo "💬 ${PUSH_COMMITS}"
+              echo "👤 By: ${PUSH_AUTHOR}"
+              echo ""
+              echo "🔗 [View Commit](https://github.com/${REPO}/commits/${PUSH_REF})"
+              ;;
+            workflow_dispatch)
+              echo "🧪 *Manual Test*"
+              echo ""
+              echo "${TEST_MSG}"
+              ;;
+          esac
+          echo ""
+          echo "📂 \`${REPO}\`"
+        }
+
+        MSG=$(build_message)
+        # Escape for JSON
+        MSG_ESCAPED=$(echo "$MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+        echo "message=$MSG_ESCAPED" >> $GITHUB_OUTPUT
+
+    - name: Send to Telegram
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        MESSAGE: ${{ steps.message.outputs.message }}
+      run: |
+        if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+          echo "⚠️ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set. Skipping."
+          exit 0
+        fi
+
+        curl -s -X POST \
+          "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"chat_id\": \"${TELEGRAM_CHAT_ID}\",
+            \"text\": ${MESSAGE},
+            \"parse_mode\": \"Markdown\",
+            \"disable_web_page_preview\": true
+          }" | python3 -c "
+        import sys, json
+        r = json.load(sys.stdin)
+        if r.get('ok'):
+            print('✅ Telegram notification sent')
+        else:
+            print(f'❌ Failed: {r.get(\"description\", \"Unknown error\")}')
+            sys.exit(1)
+        "
