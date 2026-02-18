@@ -1,21 +1,90 @@
-# ⚠️ DEPRECATED
+# ZoneWise Agents — NLP Backend 🤖
 
-This repository has been **archived** and replaced by:
+**FastAPI NLP backend powering ZoneWise.AI zoning intelligence queries.**
 
-## 👉 [zonewise-lobster](https://github.com/breverdbidder/zonewise-lobster)
+[![CI](https://github.com/breverdbidder/zonewise-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/breverdbidder/zonewise-agents/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-brightgreen.svg)](https://python.org)
 
-The new repository uses **Moltbot Lobster** for deterministic, approval-gated workflows that address security concerns identified in the [Vibe Code Guild analysis](https://github.com/moltbot/moltbot/discussions/security).
+**Status:** ✅ ACTIVE — serving production traffic at `zonewise-agents.onrender.com`
 
-### Why the change?
-
-| Old Approach | New Approach |
-|--------------|--------------|
-| Non-deterministic LLM routing | Typed YAML pipelines |
-| Same command → different results | Deterministic execution |
-| Prompt injection risk | Approval gates halt before actions |
-
-**Do not use this repository.** All development has moved to zonewise-lobster.
+> **Note:** This repo was previously mislabeled as "DEPRECATED". It is the active NLP backend.
 
 ---
 
-*Archived: January 28, 2026*
+## What It Does
+
+ZoneWise Agents is the FastAPI backend that handles:
+- Natural language zoning queries via Claude Sonnet 4.5
+- Structured zoning data retrieval from Supabase
+- LangGraph multi-step reasoning for complex queries
+- Response caching and rate limiting
+
+## Architecture
+
+```
+zonewise-web (Next.js)
+       │
+       │ POST /api/query
+       ▼
+zonewise-agents (FastAPI on Render)
+       │
+       ├── Claude Sonnet 4.5 (LLM reasoning)
+       └── Supabase (zoning data retrieval)
+```
+
+## Quick Start
+
+```bash
+git clone https://github.com/breverdbidder/zonewise-agents.git
+cd zonewise-agents
+
+pip install -r requirements.txt
+cp .env.example .env  # add ANTHROPIC_API_KEY, SUPABASE_URL, etc.
+
+# Dev server
+uvicorn app.main:app --reload --port 8000
+
+# Health check
+curl http://localhost:8000/health
+```
+
+## API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/api/query` | POST | Natural language zoning query |
+| `/api/parcel/{id}` | GET | Parcel zoning details |
+| `/api/districts` | GET | List zoning districts |
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | FastAPI (Python 3.11) |
+| AI | Claude Sonnet 4.5 (Anthropic) |
+| Orchestration | LangGraph |
+| Database | Supabase (PostgreSQL) |
+| Hosting | Render.com |
+
+## Development
+
+```bash
+# Tests
+pytest tests/ -v --cov=app --cov-fail-under=85
+
+# Lint
+ruff check app/ tests/
+
+# Type check  
+mypy app/ --ignore-missing-imports
+```
+
+## Deployment
+
+Automatically deploys to Render.com on push to `main` via `render.yaml`.
+
+## License
+
+MIT — see [LICENSE](./LICENSE)
