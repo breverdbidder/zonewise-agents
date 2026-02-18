@@ -1,0 +1,27 @@
+name: Extract Chat ID
+
+on:
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+      
+      - name: Write chat ID to file
+        env:
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "$CHAT_ID" > /tmp/chatid.txt
+          # Set as output for artifact
+          echo "chatid=$CHAT_ID" >> $GITHUB_OUTPUT
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatid
+          path: /tmp/chatid.txt
+          retention-days: 1
