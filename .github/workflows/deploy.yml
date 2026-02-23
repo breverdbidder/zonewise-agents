@@ -1,8 +1,6 @@
-name: Deploy to Render
+name: Deploy to Render (legacy)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -10,11 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render Deploy
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
-        if: ${{ secrets.RENDER_DEPLOY_HOOK != '' }}
-        
-      - name: Deploy notification
-        run: |
-          echo "🚀 Deployment triggered for zonewise-agents"
-          echo "Check Render dashboard for status"
+          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
+            curl -sf -X POST "$RENDER_DEPLOY_HOOK" && echo "✅ Triggered" || echo "⚠️ Hook failed"
+          else
+            echo "⚠️ RENDER_DEPLOY_HOOK not set — skipping"
+          fi
