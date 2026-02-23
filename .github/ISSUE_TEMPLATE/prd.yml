@@ -1,0 +1,129 @@
+name: "🧠 PRD — Feature / Task"
+description: "Product Requirements Document. Apply `traycer` label to auto-generate implementation plan."
+title: "[PRD] "
+labels: ["traycer", "prd"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **ZoneWise AI Architect Protocol**
+        > Fill all sections before applying `traycer` label. Traycer reads this doc to generate the implementation plan.
+        > Claude Code executes against that plan. Greptile validates against **Done-When** criteria.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: "🎯 Goal"
+      description: "One sentence. What problem does this solve and for whom?"
+      placeholder: "Enable ZoneWise to scrape Orange County FL foreclosure auctions daily at 11PM EST and store results in multi_county_auctions table."
+    validations:
+      required: true
+
+  - type: textarea
+    id: inputs
+    attributes:
+      label: "📥 Inputs"
+      description: "What triggers this? What data comes in? Include sources, formats, and edge cases."
+      placeholder: |
+        - Trigger: GitHub Actions cron `0 4 * * *` (11PM EST)
+        - Source: AgentQL scraping target URL (county-specific)
+        - Config: County config row from Supabase `counties` table
+        - Auth: AgentQL API key from GitHub Secrets
+    validations:
+      required: true
+
+  - type: textarea
+    id: outputs
+    attributes:
+      label: "📤 Outputs"
+      description: "What gets produced? DB rows, API responses, files, UI changes. Be specific about schemas."
+      placeholder: |
+        - Supabase insert to `multi_county_auctions` (case_number, county, parcel_id, judgment_amount, sale_date, status)
+        - Supabase upsert to `counties` (last_scraped_at, auction_count, scrape_status)
+        - Render API POST to `/webhook/scrape-complete` with county + count
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: "⚙️ Constraints"
+      description: "Tech stack rules, performance requirements, security, what is explicitly OUT OF SCOPE."
+      placeholder: |
+        - Stack: FastAPI + AgentQL + Supabase. No Playwright or Selenium.
+        - Anti-detection: Randomize delays 2-5s between requests
+        - Rate limit: Max 1 concurrent scrape per county
+        - Out of scope: Report generation, ML scoring, bid recommendations
+        - CLAUDE.md sections: [SCRAPER_PATTERNS], [SUPABASE_SCHEMA]
+    validations:
+      required: true
+
+  - type: textarea
+    id: done_when
+    attributes:
+      label: "✅ Done-When (Acceptance Criteria)"
+      description: "Testable, binary statements. Greptile validates against these. Each line = one check."
+      placeholder: |
+        - [ ] Scraper runs end-to-end for Orange County without errors
+        - [ ] At least 80% of auctions on RealForeclose page captured
+        - [ ] All rows inserted to `multi_county_auctions` with no null required fields
+        - [ ] `counties.last_scraped_at` updates on completion
+        - [ ] Failed scrape logs error to Supabase `insights` table with county + error message
+        - [ ] GitHub Action completes in < 10 minutes
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "🔗 Context & References"
+      description: "Links to related issues, CLAUDE.md sections, Supabase tables, prior PRDs, or architectural decisions."
+      placeholder: |
+        - REPO_MAP.md: agents repo owns scraper logic
+        - Supabase table: `multi_county_auctions` (see migration #003)
+        - Related issues: #12 (county config), #8 (AgentQL setup)
+        - Pattern reference: Brevard scraper in `src/scrapers/brevard.py`
+    validations:
+      required: false
+
+  - type: dropdown
+    id: repo_owner
+    attributes:
+      label: "👤 Executing Agent"
+      description: "Which agent runs this?"
+      options:
+        - "Claude Code (autonomous build)"
+        - "Claude Code + Traycer plan"
+        - "Manual (Ariel)"
+      default: 1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: "📊 Complexity"
+      options:
+        - "1 — Trivial (< 30 min)"
+        - "2 — Simple (30–90 min)"
+        - "3 — Medium (2–4 hrs)"
+        - "4 — Complex (4–8 hrs)"
+        - "5 — Epic (multi-session, break into sub-issues)"
+      default: 1
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: "🚀 Pre-flight Checklist"
+      description: "Complete before applying `traycer` label."
+      options:
+        - label: "Goal is one sentence and unambiguous"
+          required: true
+        - label: "Done-When criteria are binary and testable"
+          required: true
+        - label: "Out-of-scope explicitly stated in Constraints"
+          required: true
+        - label: "Relevant CLAUDE.md sections referenced"
+          required: false
