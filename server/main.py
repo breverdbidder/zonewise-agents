@@ -897,3 +897,175 @@ async def chat_ui():
     if chat_file.exists():
         return FileResponse(chat_file, media_type="text/html")
     return HTMLResponse("<h1>Chat UI not found</h1>", status_code=404)
+
+
+# ═══════════════════════════════════════════════════════════════
+# OPS DASHBOARD — /ops/metrics
+# ═══════════════════════════════════════════════════════════════
+
+GH_TOKEN = os.getenv("GH_TOKEN", "")
+GH_ORG = "breverdbidder"
+GH_MODAL_REPO = "zonewise-modal"
+
+SCHEDULED_WORKFLOWS = [
+    {"name": "master_scraper.yml", "label": "Nightly County Scrape", "schedule": "Daily 11PM EST"},
+    {"name": "self_optimize.yml",  "label": "Self-Optimize",          "schedule": "Daily 1AM EST"},
+    {"name": "weekly-security-report.yml", "label": "Security Report","schedule": "Weekly Sunday"},
+    {"name": "scheduled-monitoring.yml",   "label": "Monitoring",     "schedule": "Daily"},
+]
+
+
+async def gh_workflow_runs(workflow: str) -> dict:
+    """Fetch last run status for a GitHub Actions workflow."""
+    if not GH_TOKEN:
+        return {"status": "unknown", "last_run": None, "duration_seconds": None}
+    client = await get_client()
+    try:
+        resp = await client.get(
+            f"https://api.github.com/repos/{GH_ORG}/{GH_MODAL_REPO}/actions/workflows/{workflow}/runs?per_page=1",
+            headers={"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github+json"},
+            timeout=5.0
+        )
+        if resp.status_code != 200:
+            return {"status": "unknown", "last_run": None, "duration_seconds": None}
+        data = resp.json()
+        runs = data.get("workflow_runs", [])
+        if not runs:
+            return {"status": "never_run", "last_run": None, "duration_seconds": None}
+        run = runs[0]
+        conclusion = run.get("conclusion") or run.get("status", "unknown")
+        created = run.get("created_at")
+        updated = run.get("updated_at")
+        duration = None
+        if created and updated:
+            from datetime import timezone
+            t1 = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            t2 = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+            duration = int((t2 - t1).total_seconds())
+        return {
+            "status": conclusion,
+            "last_run": updated,
+            "duration_seconds": duration,
+            "run_url": run.get("html_url")
+        }
+    except Exception:
+        return {"status": "error", "last_run": None, "duration_seconds": None}
+
+
+@app.get("/ops/metrics")
+async def ops_metrics():
+    """
+    Aggregate pipeline health, agent status, data quality, and scheduled tasks
+    for the ZoneWise Agent Ops Dashboard.
+    """
+    now = datetime.utcnow().isoformat() + "Z"
+
+    # ── Pipeline Health ──────────────────────────────────────────
+    county_total = await sb_count("jurisdictions")
+    counties_with_data = await sb_count("jurisdictions", "co_no=not.is.null")
+
+    # Recent scrape jobs (last 7 days)
+    scrape_jobs_recent = []
+    try:
+        scrape_jobs_recent = await sb_query(
+            "scrape_jobs",
+            "select=id,county,status,started_at,completed_at,records_scraped,error_message&order=started_at.desc",
+            limit=100
+        )
+    except Exception:
+        pass
+
+    total_jobs = len(scrape_jobs_recent)
+    successful_jobs = sum(1 for j in scrape_jobs_recent if j.get("status") == "success")
+    failed_jobs = [j for j in scrape_jobs_recent if j.get("status") == "error"]
+    last_run = scrape_jobs_recent[0].get("completed_at") if scrape_jobs_recent else None
+    success_rate = round(successful_jobs / total_jobs * 100, 1) if total_jobs > 0 else 0
+
+    # Duration of last full run
+    last_duration = None
+    if scrape_jobs_recent:
+        j = scrape_jobs_recent[0]
+        if j.get("started_at") and j.get("completed_at"):
+            try:
+                t1 = datetime.fromisoformat(j["started_at"].replace("Z", ""))
+                t2 = datetime.fromisoformat(j["completed_at"].replace("Z", ""))
+                last_duration = int((t2 - t1).total_seconds())
+            except Exception:
+                pass
+
+    # ── Agent Status ─────────────────────────────────────────────
+    running_jobs = [j for j in scrape_jobs_recent if j.get("status") == "running"]
+    pending_reports = []
+    try:
+        pending_reports = await sb_query(
+            "scrape_jobs",
+            "select=id&status=eq.pending_report",
+            limit=50
+        )
+    except Exception:
+        pass
+
+    # ── Data Quality ─────────────────────────────────────────────
+    records_today = 0
+    try:
+        today_jobs = [j for j in scrape_jobs_recent
+                      if j.get("completed_at", "").startswith(now[:10])]
+        records_today = sum(j.get("records_scraped", 0) or 0 for j in today_jobs)
+    except Exception:
+        pass
+
+    # Recent errors from insights table
+    recent_errors = []
+    try:
+        recent_errors = await sb_query(
+            "insights",
+            "select=id,county,error_message,created_at&type=eq.scrape_error&order=created_at.desc",
+            limit=20
+        )
+    except Exception:
+        pass
+
+    validation_errors = len(recent_errors)
+    schema_compliance = round((1 - validation_errors / max(total_jobs, 1)) * 100, 1)
+
+    # ── Scheduled Tasks ───────────────────────────────────────────
+    workflow_tasks = []
+    for wf in SCHEDULED_WORKFLOWS:
+        run_data = await gh_workflow_runs(wf["name"])
+        workflow_tasks.append({
+            "workflow": wf["name"],
+            "label": wf["label"],
+            "schedule": wf["schedule"],
+            **run_data
+        })
+
+    return {
+        "fetched_at": now,
+        "pipeline_health": {
+            "county_total": county_total,
+            "counties_with_data": counties_with_data,
+            "last_full_run": last_run,
+            "last_duration_seconds": last_duration,
+            "success_rate_pct": success_rate,
+            "jobs_total": total_jobs,
+            "jobs_successful": successful_jobs,
+            "failed_counties": [
+                {"county": j.get("county"), "error": j.get("error_message", "unknown")}
+                for j in failed_jobs[:10]
+            ]
+        },
+        "agent_status": {
+            "scraper": "RUNNING" if running_jobs else "IDLE",
+            "scraper_active_county": running_jobs[0].get("county") if running_jobs else None,
+            "analysis_queue_depth": len([j for j in scrape_jobs_recent if j.get("status") == "pending_analysis"]),
+            "report_pending": len(pending_reports),
+            "qa_pass_rate_pct": schema_compliance,
+        },
+        "data_quality": {
+            "records_today": records_today,
+            "validation_errors_recent": validation_errors,
+            "schema_compliance_pct": schema_compliance,
+            "recent_errors": recent_errors[:5],
+        },
+        "scheduled_tasks": workflow_tasks,
+    }
