@@ -178,7 +178,11 @@ INTENT_RULES = [
                         "what zoning", "districts in", "zone types"]),
     ("DISTRICT_DETAIL", ["setback", "height limit", "lot size", "density",
                          "far ", "floor area", "building envelope", "requirements for"]),
-    ("PARCEL_LOOKUP", ["parcel", "folio", "property at", "address",
+    ("ADDRESS_QUERY", ["what can i build", "can i build", "build at",
+                       "what can be built", "development at", "build on",
+                       "what's allowed at", "whats allowed at",
+                       "zoning at", "zone at", "zoned at"]),
+    ("PARCEL_LOOKUP", ["parcel", "folio", "property at",
                        "what zone is", "zoned as"]),
     ("REPORT", ["report", "generate", "pdf", "export", "download"]),
     ("COUNTY_STATS", ["how many", "statistics", "coverage", "counties",
@@ -630,18 +634,245 @@ async def agent_general(query: str, entities: Dict) -> Dict:
     }
 
 
+
+
+async def agent_address_query(query: str, entities: Dict) -> Dict:
+    """
+    Handle address/property queries: "What can I build at 625 Ocean St Satellite Beach?"
+    Strategy:
+      1. Extract city from entities (already parsed by extract_entities)
+      2. Look up jurisdiction in Supabase
+      3. Get all zoning districts for that jurisdiction
+      4. Get dimensional standards for residential districts (most likely for address queries)
+      5. Get permitted uses if available
+      6. Return real data — never hallucinate standards
+    """
+    jurisdiction = entities.get("jurisdiction")
+
+    if not jurisdiction:
+        return {
+            "answer": (
+                "I need a city or area name to look up zoning. Try:\n\n"
+                "• _What can I build in **Satellite Beach**?_\n"
+                "• _What's the zoning at 625 Ocean St, **Cocoa Beach**?_\n"
+                "• _Development rules in **Melbourne**?_"
+            ),
+            "data": None, "citations": [],
+            "suggestions": ["What can I build in Satellite Beach?",
+                            "Zoning rules in Cocoa Beach",
+                            "What zones are in Brevard County?"]
+        }
+
+    # ── Step 1: Resolve jurisdiction ────────────────────────────────────────
+    juris_rows = await sb_query(
+        "jurisdictions",
+        f"select=id,name,county,data_completeness,municode_url"
+        f"&or=(name.ilike.%25{jurisdiction}%25,county.ilike.%25{jurisdiction}%25)",
+        limit=5
+    )
+
+    if not juris_rows:
+        return {
+            "answer": (
+                f"I couldn't find **{jurisdiction}** in our Florida database.\n\n"
+                f"Try the county name (e.g. _Brevard County_) or a nearby city."
+            ),
+            "data": None, "citations": [],
+            "suggestions": [f"Show zones in Brevard County",
+                            "What counties do you cover?"]
+        }
+
+    # Prefer exact name match, fall back to first result
+    j = next((r for r in juris_rows if r["name"].lower() == jurisdiction.lower()), juris_rows[0])
+    jid = j["id"]
+
+    # ── Step 2: Get all zoning districts ────────────────────────────────────
+    districts = await sb_query(
+        "zoning_districts",
+        f"select=id,code,name,category,description&jurisdiction_id=eq.{jid}&order=category,code",
+        limit=200
+    )
+
+    if not districts:
+        return {
+            "answer": (
+                f"**{j['name']}** ({j['county']} County) is in our database but "
+                f"zoning districts haven't been loaded yet.\n\n"
+                f"Data completeness: {j.get('data_completeness', 0):.0f}%\n\n"
+                f"Check back soon — our scraper processes all 67 FL counties nightly."
+            ),
+            "data": {"jurisdiction": j}, "citations": [],
+            "suggestions": [f"Show zones in {j['county']} County",
+                            "Which counties have full data?"]
+        }
+
+    # ── Step 3: Get dimensional standards for districts ──────────────────────
+    district_ids = [str(d["id"]) for d in districts]
+    standards_map: Dict[str, Dict] = {}
+
+    if district_ids:
+        # Fetch standards in batches of 50
+        for i in range(0, min(len(district_ids), 100), 50):
+            batch = district_ids[i:i+50]
+            standards = await sb_query(
+                "zone_standards",
+                f"select=*&zoning_district_id=in.({','.join(batch)})",
+                limit=200
+            )
+            for s in standards:
+                standards_map[str(s["zoning_district_id"])] = s
+
+    # ── Step 4: Get permitted uses ───────────────────────────────────────────
+    uses_map: Dict[str, list] = {}
+    if district_ids:
+        for i in range(0, min(len(district_ids), 50), 50):
+            batch = district_ids[i:i+50]
+            uses = await sb_query(
+                "permitted_uses",
+                f"select=zoning_district_id,use_type,use_name,permission_type"
+                f"&zoning_district_id=in.({','.join(batch)})&order=permission_type,use_name",
+                limit=500
+            )
+            for u in uses:
+                did = str(u["zoning_district_id"])
+                uses_map.setdefault(did, []).append(u)
+
+    # ── Step 5: Build response ───────────────────────────────────────────────
+    # Group districts by category
+    by_cat: Dict[str, list] = {}
+    for d in districts:
+        cat = d.get("category") or "Other"
+        by_cat.setdefault(cat, []).append(d)
+
+    # Address line from query (best-effort)
+    addr_match = entities.get("address", "")
+    location_line = f"**{addr_match}, {j['name']}**" if addr_match else f"**{j['name']}**"
+
+    lines = [
+        f"## {location_line}",
+        f"**County:** {j['county']} | "
+        f"**Data completeness:** {j.get('data_completeness', 0):.0f}% | "
+        f"**{len(districts)} zoning districts**\n",
+    ]
+
+    has_standards = bool(standards_map)
+
+    # Residential districts first (most relevant for property queries)
+    priority_cats = ["Residential", "Single Family", "Multi-Family"]
+    other_cats = [c for c in by_cat if c not in priority_cats]
+    ordered_cats = [c for c in priority_cats if c in by_cat] + other_cats
+
+    for cat in ordered_cats[:4]:  # Cap at 4 categories for readability
+        dists = by_cat[cat]
+        lines.append(f"### {cat} Districts\n")
+
+        for d in dists[:6]:  # Cap at 6 districts per category
+            did_str = str(d["id"])
+            s = standards_map.get(did_str)
+            u_list = uses_map.get(did_str, [])
+
+            lines.append(f"**{d['code']}** — {d.get('name', '')}\n")
+
+            if s:
+                # Show key dimensional standards
+                std_rows = []
+                field_map = [
+                    ("min_lot_sqft",        "Min Lot Size",    lambda v: f"{int(v):,} sq ft"),
+                    ("front_setback_ft",    "Front Setback",   lambda v: f"{v} ft"),
+                    ("side_setback_ft",     "Side Setback",    lambda v: f"{v} ft"),
+                    ("rear_setback_ft",     "Rear Setback",    lambda v: f"{v} ft"),
+                    ("max_height_ft",       "Max Height",      lambda v: f"{v} ft"),
+                    ("max_lot_coverage_pct","Max Lot Coverage",lambda v: f"{v}%"),
+                    ("max_density_du_acre", "Max Density",     lambda v: f"{v} du/acre"),
+                ]
+                for field, label, fmt in field_map:
+                    val = s.get(field)
+                    if val is not None:
+                        std_rows.append(f"| {label} | **{fmt(val)}** |")
+
+                if std_rows:
+                    lines.append("| Requirement | Value |")
+                    lines.append("|---|---|")
+                    lines.extend(std_rows)
+
+                conf = s.get("confidence_score", 0) or 0
+                lines.append(f"_Confidence: {conf*100:.0f}%_\n")
+            else:
+                lines.append("_Dimensional standards pending for this district_\n")
+
+            # Permitted uses summary
+            if u_list:
+                permitted = [u["use_name"] for u in u_list if u.get("permission_type") in ("P", "permitted", "by-right")][:4]
+                conditional = [u["use_name"] for u in u_list if u.get("permission_type") in ("C", "conditional", "CU")][:3]
+                prohibited = [u["use_name"] for u in u_list if u.get("permission_type") in ("N", "prohibited", "not-permitted")][:3]
+
+                if permitted:
+                    lines.append(f"✅ **Permitted:** {', '.join(permitted)}")
+                if conditional:
+                    lines.append(f"⚠️ **Conditional:** {', '.join(conditional)}")
+                if prohibited:
+                    lines.append(f"❌ **Not Permitted:** {', '.join(prohibited)}")
+                lines.append("")
+
+        lines.append("")
+
+    # Footer
+    lines.append("---")
+    if not has_standards:
+        lines.append(
+            "> ⚠️ Dimensional standards for this jurisdiction are still being processed. "
+            "Districts shown are real — setback/height data coming soon."
+        )
+    lines.append(
+        f"_For exact parcel zoning, provide your parcel ID or visit "
+        f"[Brevard Property Appraiser](https://www.bcpao.us) / county GIS._"
+        if j["county"] == "Brevard"
+        else f"_For exact parcel zoning, provide your parcel ID or visit {j['county']} County GIS._"
+    )
+
+    citations = []
+    if j.get("municode_url"):
+        citations.append({
+            "source": "Municode",
+            "url": j["municode_url"],
+            "title": f"{j['name']} Code of Ordinances"
+        })
+
+    # Top suggestion based on most complete residential district
+    best_district = next(
+        (d for d in districts if standards_map.get(str(d["id"]))),
+        districts[0] if districts else None
+    )
+
+    return {
+        "answer": "\n".join(lines),
+        "data": {
+            "jurisdiction": j,
+            "district_count": len(districts),
+            "standards_count": len(standards_map),
+            "categories": {k: len(v) for k, v in by_cat.items()}
+        },
+        "citations": citations,
+        "suggestions": [
+            f"Setbacks for {best_district['code']} in {j['name']}" if best_district else f"List zones in {j['name']}",
+            f"What can I build in {j['county']} County?",
+            f"Compare zones in {j['name']}",
+        ]
+    }
+
 # ═══════════════════════════════════════════════════════════════
 # AGENT ROUTER
 # ═══════════════════════════════════════════════════════════════
 
 AGENT_MAP = {
-    "LIST_DISTRICTS": lambda q, e: agent_list_districts(e),
+    "LIST_DISTRICTS":  lambda q, e: agent_list_districts(e),
     "DISTRICT_DETAIL": lambda q, e: agent_district_detail(e),
-    "COMPARISON": lambda q, e: agent_comparison(e),
-    "FEASIBILITY": lambda q, e: agent_district_detail(e),
-    "PARCEL_LOOKUP": lambda q, e: agent_parcel_lookup(e),
-    "COUNTY_STATS": lambda q, e: agent_county_stats(e),
-    "GENERAL": agent_general,
+    "COMPARISON":      lambda q, e: agent_comparison(e),
+    "FEASIBILITY":     lambda q, e: agent_district_detail(e),
+    "ADDRESS_QUERY":   lambda q, e: agent_address_query(q, e),
+    "PARCEL_LOOKUP":   lambda q, e: agent_parcel_lookup(e),
+    "COUNTY_STATS":    lambda q, e: agent_county_stats(e),
+    "GENERAL":         agent_general,
 }
 
 
@@ -714,7 +945,7 @@ async def chat_stream(req: ChatRequest):
 
         # Structured intents: fast regex → Supabase
         if intent in ("LIST_DISTRICTS", "DISTRICT_DETAIL",
-                       "PARCEL_LOOKUP", "COUNTY_STATS"):
+                       "ADDRESS_QUERY", "PARCEL_LOOKUP", "COUNTY_STATS"):
             yield f"data: {json.dumps({'type': 'thinking', 'value': f'Querying {intent}...'})}\n\n"
             handler = AGENT_MAP.get(intent, agent_general)
             result = await handler(req.query, entities)
