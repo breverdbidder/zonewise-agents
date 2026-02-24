@@ -195,6 +195,19 @@ INTENT_RULES = [
 ]
 
 
+
+def format_confidence(score) -> str:
+    """Format confidence_score for display. Returns empty string when NULL."""
+    if score is None:
+        return ""
+    score = float(score)
+    if score >= 0.75:
+        return "_Confidence: High (verified)_"
+    elif score >= 0.50:
+        return "_Confidence: Medium (scraped)_"
+    else:
+        return "_\u26a0\ufe0f Unverified data \u2014 confirm with source_"
+
 def classify_intent(query: str) -> str:
     q = query.lower()
     for intent, keywords in INTENT_RULES:
@@ -417,8 +430,13 @@ async def agent_district_detail(entities: Dict) -> Dict:
                     val = int(val)
                 lines.append(f"| {label} | **{val:,}{suffix}** |" if isinstance(val, (int, float)) else f"| {label} | **{val}{suffix}** |")
 
-        conf = s.get("confidence_score", 0)
-        lines.append(f"\n_Confidence: {conf*100:.0f}% | Source: {s.get('source_url', 'Municode')}_")
+        conf_line = format_confidence(s.get("confidence_score"))
+        source = s.get('source_url', '')
+        footer = conf_line
+        if source:
+            footer = (conf_line + " | " if conf_line else "") + f"[Source]({source})"
+        if footer:
+            lines.append(f"\n{footer}")
 
         citations = []
         if s.get("source_url"):
@@ -800,8 +818,9 @@ async def agent_address_query(query: str, entities: Dict) -> Dict:
                     lines.append("|---|---|")
                     lines.extend(std_rows)
 
-                conf = s.get("confidence_score", 0) or 0
-                lines.append(f"_Confidence: {conf*100:.0f}%_\n")
+                conf_line = format_confidence(s.get("confidence_score"))
+                if conf_line:
+                    lines.append(conf_line + "\n")
             else:
                 lines.append("_Dimensional standards pending for this district_\n")
 
