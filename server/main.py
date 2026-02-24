@@ -170,18 +170,23 @@ class ChatResponse(BaseModel):
 # ═══════════════════════════════════════════════════════════════
 
 INTENT_RULES = [
-    # COMPARISON first — "compare" is a strong signal that beats partial matches below
+    # COMPARISON first — strong signal
     ("COMPARISON", ["compare", "difference between", "vs ", "versus"]),
-    ("FEASIBILITY", ["can i build", "allowed", "permitted", "feasible",
-                     "what can i", "is it possible"]),
+    # ADDRESS_QUERY before FEASIBILITY — "what can I build at [address]" must
+    # match here, not fall into generic FEASIBILITY which has no address handling
+    ("ADDRESS_QUERY", ["what can i build at", "can i build at", "build at",
+                       "what can be built at", "development at",
+                       "build on", "build a ", "build an ",
+                       "what's allowed at", "whats allowed at",
+                       "zoning at", "zone at", "zoned at"]),
+    # FEASIBILITY: zone-code questions without a street address
+    ("FEASIBILITY", ["is it feasible", "is it possible", "feasible",
+                     "allowed in", "permitted in", "permitted use",
+                     "is a ", "is an "]),
     ("LIST_DISTRICTS", ["what zones", "zoning districts", "list zones", "all zones",
                         "what zoning", "districts in", "zone types"]),
     ("DISTRICT_DETAIL", ["setback", "height limit", "lot size", "density",
                          "far ", "floor area", "building envelope", "requirements for"]),
-    ("ADDRESS_QUERY", ["what can i build", "can i build", "build at",
-                       "what can be built", "development at", "build on",
-                       "what's allowed at", "whats allowed at",
-                       "zoning at", "zone at", "zoned at"]),
     ("PARCEL_LOOKUP", ["parcel", "folio", "property at",
                        "what zone is", "zoned as"]),
     ("REPORT", ["report", "generate", "pdf", "export", "download"]),
