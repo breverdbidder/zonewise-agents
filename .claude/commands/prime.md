@@ -1,107 +1,185 @@
 ---
-description: Boot full project context — reads CLAUDE.md, schema, recent activity, TODO.md, and Supabase state. Run at the start of every session.
+description: Boot full project context. Reads CLAUDE.md, queries master_index for cross-repo state, loads active task from ssot-task-manager, checks Supabase health and GitHub Actions status. Run at the start of every session.
 ---
 
-# Prime: Load Project Context
+# /prime — Boot Project Context
 
 ## Objective
+Build complete situational awareness before touching any code.
+This command runs in under 90 seconds and tells you exactly what to work on.
 
-Build comprehensive understanding of the current repo state before doing any work.
+---
 
-## Process
-
-### 1. Read Root Directive
+## Step 1: Read This Repo
 
 ```bash
 cat CLAUDE.md
-```
-
-### 2. Project Structure
-
-```bash
-git ls-files | head -100
-tree -L 3 -I 'node_modules|__pycache__|.git|dist|build|.next' 2>/dev/null || find . -type f -not -path '*/node_modules/*' -not -path '*/.git/*' | head -80
-```
-
-### 3. Read Core Docs
-
-- `CLAUDE.md` — already read above
-- `README.md` — project overview
-- `TODO.md` — current task queue (MANDATORY — identifies what to work on next)
-- `.env.example` — env var names (never read `.env`)
-- `drizzle/` or `src/db/` — schema definition
-- `.github/workflows/` — CI/CD pipeline definitions
-
-### 4. Current State
-
-```bash
-git log --oneline -10
+git log --oneline -5
 git status
 git branch --show-current
 ```
 
-### 5. Supabase Health Check
+Read in parallel:
+- `README.md`
+- `.env.example`
+- `PROJECT_STATE.json` (if exists)
+- `CHANGELOG.md` (last 20 lines)
+
+---
+
+## Step 2: Load Active Task from SSOT
+
+The single task queue for all ZoneWise and BidDeed work lives in:
+`breverdbidder/ssot-task-manager`
 
 ```bash
-# Recent pipeline activity
-psql "$DATABASE_URL" -c "
-SELECT task, status, created_at 
-FROM insights 
-ORDER BY created_at DESC LIMIT 5" 2>/dev/null || echo "psql not available — use REST API"
-
-# Tonight's auction count
-psql "$DATABASE_URL" -c "
-SELECT COUNT(*) as total_auctions, MAX(created_at) as latest_scrape
-FROM multi_county_auctions
-WHERE created_at > NOW() - INTERVAL '24 hours'" 2>/dev/null || true
+# Fetch the active task list
+curl -s -H "Authorization: token $GITHUB_PAT" \
+  "https://api.github.com/repos/breverdbidder/ssot-task-manager/contents/TODO.md" \
+  | python3 -c "
+import sys, json, base64
+d = json.load(sys.stdin)
+content = base64.b64decode(d['content']).decode()
+print(content[:3000])
+" 2>/dev/null || echo "SSOT unavailable — check local TODO.md"
 ```
 
-### 6. TODO.md — Load Current Task
+Find the first unchecked `[ ]` item. That is the active task for this session.
+If the list is empty, report: "SSOT: No active tasks. Awaiting Ariel direction."
 
-Read `TODO.md` from repo. Find the **first unchecked item** `[ ]`. That is the active task for this session.
+---
 
-Report which task is active.
-
-### 7. GitHub Actions Status
+## Step 3: Cross-Repo State from master_index
 
 ```bash
+# What's active across ALL repos right now
+psql "$DATABASE_URL" -c "
+SELECT repo, file_path, file_type, updated_at
+FROM master_index
+WHERE updated_at > NOW() - INTERVAL '48 hours'
+ORDER BY updated_at DESC
+LIMIT 20" 2>/dev/null || \
+curl -s "$SUPABASE_URL/rest/v1/master_index?select=repo,file_path,updated_at&order=updated_at.desc&limit=20" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" 2>/dev/null | \
+  python3 -c "import sys,json; [print(r['repo'],'→',r['file_path']) for r in json.load(sys.stdin)]" \
+  || echo "master_index unavailable"
+```
+
+---
+
+## Step 4: Capability Registry Health
+
+```bash
+# Which capabilities are active/beta/coming_soon
+psql "$DATABASE_URL" -c "
+SELECT slug, name, status, tier_required, sort_order
+FROM capabilities
+ORDER BY sort_order" 2>/dev/null || \
+curl -s "$SUPABASE_URL/rest/v1/capabilities?select=slug,name,status&order=sort_order" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" 2>/dev/null | \
+  python3 -c "import sys,json; [print(r['slug'],r['status']) for r in json.load(sys.stdin)]" \
+  || echo "Capability registry not yet deployed — run migration 001"
+```
+
+---
+
+## Step 5: Supabase Pipeline Health
+
+```bash
+# BidDeed pipeline recent activity
+psql "$DATABASE_URL" -c "
+SELECT task, status, message, created_at
+FROM insights
+WHERE created_at > NOW() - INTERVAL '24 hours'
+ORDER BY created_at DESC
+LIMIT 10" 2>/dev/null || true
+
+# Tonight's auctions
+psql "$DATABASE_URL" -c "
+SELECT county, COUNT(*) as count,
+  SUM(CASE WHEN recommendation='BID' THEN 1 ELSE 0 END) as bids
+FROM multi_county_auctions
+WHERE created_at > NOW() - INTERVAL '24 hours'
+GROUP BY county" 2>/dev/null || true
+```
+
+---
+
+## Step 6: BidDeed External API Status
+
+```bash
+# Check if BidDeed API is live
+curl -sf "https://biddeed-api.onrender.com/api/v1/health" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('BidDeed API:', d.get('status'), '|', d.get('auctions_last_24h'), 'auctions')" \
+  2>/dev/null || echo "BidDeed API: not yet deployed"
+```
+
+---
+
+## Step 7: GitHub Actions Status
+
+```bash
+REPO=$(basename $(git rev-parse --show-toplevel))
 curl -s -H "Authorization: token $GITHUB_PAT" \
-  "https://api.github.com/repos/breverdbidder/$(basename $PWD)/actions/runs?per_page=3" \
-  2>/dev/null | python3 -c "
+  "https://api.github.com/repos/breverdbidder/${REPO}/actions/runs?per_page=3" \
+  | python3 -c "
 import sys, json
 try:
   runs = json.load(sys.stdin).get('workflow_runs', [])
   for r in runs[:3]:
-    print(f\"{r['name']}: {r['status']} / {r['conclusion']} ({r['created_at'][:10]})\")
-except: print('Could not fetch Actions status')
-" || true
+    print(f\"{r['name']}: {r['status']}/{r.get('conclusion','pending')} ({r['created_at'][:10]})\")
+except: print('Actions status unavailable')
+" 2>/dev/null || true
 ```
 
 ---
 
 ## Output Report
 
-Provide a concise, scannable summary:
+Print this exact structure:
 
-### Active Task
-`[ ] [task from TODO.md]` — this is what we work on this session.
+```
+═══════════════════════════════════════════════
+/PRIME COMPLETE — [REPO NAME] — [timestamp]
+═══════════════════════════════════════════════
 
-### Project State
-- Repo + branch + last commit
-- Any uncommitted changes
+ACTIVE TASK (from SSOT):
+→ [ ] [task description]
+   Complexity: [1-10] | Domain: [BIDDEED/ZONEWISE/LIFE_OS]
 
-### Pipeline Health
-- Last scraper run: [status + time]
-- Recent auction count: [n auctions in last 24h]
-- Open GitHub Actions failures: [list or "none"]
+CROSS-REPO ACTIVITY (last 48h):
+→ [repo]: [file changed] ([time ago])
 
-### Tech Stack Confirmed
-- [detected stack]
+CAPABILITY REGISTRY:
+→ discoverwise: [status]
+→ lienwise: [status]
+→ cmawise: [status]
+→ titlewise: [status]
 
-### Key Files to Know
-- [3-5 most relevant files for today's task]
+PIPELINE HEALTH:
+→ Last run: [time] — [status]
+→ Auctions tonight: [n]
+→ Errors (24h): [n]
+→ BidDeed API: [healthy/not deployed]
 
-### Warnings
-- Any `.env` vars missing from `.env.example`
-- Any TODO items marked BLOCKED
-- Any recent ERROR entries in insights table
+GITHUB ACTIONS:
+→ [workflow]: [status]
+
+REPO STATE:
+→ Branch: [branch] | Last commit: [hash] [message]
+→ Uncommitted: [n files] or CLEAN
+
+WARNINGS: [any blocked tasks, missing env vars, ERROR insights]
+
+NEXT ACTION: [one specific thing to do — execute /execute or /plan-feature]
+═══════════════════════════════════════════════
+```
+
+---
+
+## Critical Rules
+- EXACT values only. Never invent numbers.
+- If a system is unavailable, say so — do not fabricate status.
+- Active task from SSOT overrides local TODO.md.
+- If SSOT says no tasks: do NOT invent work. Report and wait.
