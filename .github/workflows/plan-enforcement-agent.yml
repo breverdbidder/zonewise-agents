@@ -1,5 +1,5 @@
 # ============================================================
-# BidDeed.AI — Plan Enforcement Agent v3.0
+# BidDeed.AI — Plan Enforcement Agent v4.0
 # Full autonomous loop — zero human touch end to end
 #
 # PLAN PR:
@@ -199,7 +199,7 @@ This plan is approved. Open a new PR with your implementation. The Plan Enforcem
 \`Label applied:\` \`plan-approved\`
 
 ---
-*AI Architect (claude-sonnet-4-5) • Plan Enforcement Agent v3.0 • BidDeed.AI*"
+*AI Architect (claude-sonnet-4-5) • Plan Enforcement Agent v4.0 • BidDeed.AI*"
 
           else
             gh pr comment $PR_NUMBER --body "## 🔄 AI Architect — CHANGES REQUESTED (${SCORE}/100)
@@ -216,7 +216,7 @@ ${ISSUES}
 Fix the issues above, push an updated PLAN.md to this PR. The AI Architect will re-review automatically.
 
 ---
-*AI Architect (claude-sonnet-4-5) • Plan Enforcement Agent v3.0 • BidDeed.AI*"
+*AI Architect (claude-sonnet-4-5) • Plan Enforcement Agent v4.0 • BidDeed.AI*"
           fi
 
   # ──────────────────────────────────────────────────────
@@ -330,7 +330,7 @@ The AI Architect must review and approve your plan before implementation can pro
 - **Estimated Complexity** — Low / Medium / High
 
 ---
-*Plan Enforcement Agent v3.0 • BidDeed.AI*"
+*Plan Enforcement Agent v4.0 • BidDeed.AI*"
           echo "::error::BLOCKED: No architect-approved plan found."
           exit 1
 
@@ -350,6 +350,7 @@ The AI Architect must review and approve your plan before implementation can pro
       review_json: ${{ steps.claude_review.outputs.review_json }}
       summary: ${{ steps.claude_review.outputs.summary }}
       critical_issues: ${{ steps.claude_review.outputs.critical_issues }}
+      coverage_pct: ${{ steps.claude_review.outputs.coverage_pct }}
 
     steps:
       - uses: actions/checkout@v4
@@ -369,6 +370,45 @@ The AI Architect must review and approve your plan before implementation can pro
           echo "diff<<DIFF_EOF" >> $GITHUB_OUTPUT
           echo "$DIFF" >> $GITHUB_OUTPUT
           echo "DIFF_EOF" >> $GITHUB_OUTPUT
+
+
+      - name: Run coverage and inject into scoring
+        id: run_coverage
+        run: |
+          # Install deps if requirements.txt exists
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt --quiet 2>/dev/null || true
+          fi
+          pip install pytest pytest-cov --quiet 2>/dev/null || true
+
+          # Run coverage against changed Python files
+          CHANGED_PY=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null | grep "\.py$" | grep -v "test_" | head -10 || echo "")
+
+          if [ -n "$CHANGED_PY" ]; then
+            # Run pytest with coverage
+            COV_OUTPUT=$(python3 -m pytest tests/ --cov=src --cov-report=term-missing               --tb=no -q 2>&1 | tail -20 || echo "No tests ran")
+
+            # Extract total coverage %
+            COVERAGE_PCT=$(echo "$COV_OUTPUT" | grep -oE "TOTAL.*([0-9]+)%" | grep -oE "[0-9]+%" | tail -1 | tr -d "%" || echo "0")
+            TESTS_PASSED=$(echo "$COV_OUTPUT" | grep -oE "[0-9]+ passed" | head -1 || echo "0 passed")
+            TESTS_FAILED=$(echo "$COV_OUTPUT" | grep -oE "[0-9]+ failed" | head -1 || echo "")
+
+            if [ -z "$COVERAGE_PCT" ]; then COVERAGE_PCT="0"; fi
+
+            echo "coverage_pct=$COVERAGE_PCT" >> $GITHUB_OUTPUT
+            echo "tests_passed=$TESTS_PASSED" >> $GITHUB_OUTPUT
+            echo "tests_failed=$TESTS_FAILED" >> $GITHUB_OUTPUT
+            echo "coverage_output<<COV_EOF" >> $GITHUB_OUTPUT
+            echo "$COV_OUTPUT" >> $GITHUB_OUTPUT
+            echo "COV_EOF" >> $GITHUB_OUTPUT
+            echo "has_python=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Python files changed — skipping coverage"
+            echo "coverage_pct=100" >> $GITHUB_OUTPUT
+            echo "tests_passed=N/A" >> $GITHUB_OUTPUT
+            echo "tests_failed=" >> $GITHUB_OUTPUT
+            echo "has_python=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Claude API — Score implementation vs plan
         id: claude_review
@@ -393,6 +433,12 @@ Verify implementation matches the AI Architect-approved PLAN.md.
 Respond ONLY with valid JSON, no markdown.
 
 PR: ${PR_TITLE} | Complexity: ${COMPLEXITY}
+
+Test Coverage: ${{ steps.run_coverage.outputs.coverage_pct }}% (minimum required: 80%)
+Tests: ${{ steps.run_coverage.outputs.tests_passed }} ${{ steps.run_coverage.outputs.tests_failed }}
+
+IMPORTANT: If coverage < 80%, penalize the score significantly. Coverage is a hard requirement.
+If new Python files are added without corresponding test files, flag as critical issue.
 
 PLAN.md:
 ${PLAN}
@@ -438,10 +484,12 @@ print(text.strip())
           SUMMARY=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('summary',''))" 2>/dev/null || echo "")
           ISSUES=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin).get('critical_issues',[])))" 2>/dev/null || echo "")
 
+          COVERAGE_PCT="${{ steps.run_coverage.outputs.coverage_pct }}"
           echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
           echo "score=$SCORE" >> $GITHUB_OUTPUT
           echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
           echo "critical_issues=$ISSUES" >> $GITHUB_OUTPUT
+          echo "coverage_pct=$COVERAGE_PCT" >> $GITHUB_OUTPUT
           echo "review_json<<REVIEW_EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW_JSON" >> $GITHUB_OUTPUT
           echo "REVIEW_EOF" >> $GITHUB_OUTPUT
@@ -465,6 +513,9 @@ print(text.strip())
           elif [ "$VERDICT" = "WARN" ]; then EMOJI="⚠️"; LABEL="WARN — AI Architect fixing"
           else EMOJI="❌"; LABEL="FAILED — Escalating to Ariel"; fi
 
+          COVERAGE="${{ needs.gate2-plan-verification.outputs.coverage_pct }}"
+          if [ "$COVERAGE" -ge 80 ] 2>/dev/null; then COV_STATUS="✅ ${COVERAGE}%"; else COV_STATUS="❌ ${COVERAGE}% (min: 80%)"; fi
+
           gh pr comment $PR_NUMBER --body "## ${EMOJI} Gate 2 — ${LABEL} (${SCORE}/100)
 
 | Dimension | Result |
@@ -473,18 +524,121 @@ print(text.strip())
 | Files match | ${FILES} |
 | Approach match | ${APPROACH} |
 | No scope creep | ${CREEP} |
+| Test coverage | ${COV_STATUS} |
 
 **Summary:** ${SUMMARY}
 
 ---
-*Plan Enforcement Agent v3.0 • claude-sonnet-4-5 • BidDeed.AI*"
+*Plan Enforcement Agent v4.0 • claude-sonnet-4-5 • BidDeed.AI*"
+
+
+  # ──────────────────────────────────────────────────────
+  # COVERAGE FAIL: PASS verdict but coverage < 80%
+  # ──────────────────────────────────────────────────────
+  coverage-fix:
+    needs: [gate1-plan-required, gate2-plan-verification]
+    if: |
+      needs.gate2-plan-verification.outputs.verdict == 'PASS' &&
+      needs.gate2-plan-verification.outputs.coverage_pct != '' &&
+      needs.gate2-plan-verification.outputs.coverage_pct < '80'
+    runs-on: ubuntu-latest
+    name: "COVERAGE — Below 80% Threshold"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate test instructions for Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          COVERAGE="${{ needs.gate2-plan-verification.outputs.coverage_pct }}"
+          PLAN="${{ needs.gate1-plan-required.outputs.plan_content }}"
+
+          # Get changed Python files
+          CHANGED_PY=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null | grep "\.py$" | grep -v "test_" || echo "")
+
+          RESPONSE=$(curl -s -X POST "https://api.anthropic.com/v1/messages"             -H "Content-Type: application/json"             -H "x-api-key: ${ANTHROPIC_API_KEY}"             -H "anthropic-version: 2023-06-01"             -d "$(python3 -c "
+import json
+prompt = '''You are the AI Architect for BidDeed.AI.
+
+Coverage check failed: ${COVERAGE}% (minimum: 80%).
+
+Changed Python files:
+${CHANGED_PY}
+
+PLAN.md summary:
+${PLAN}
+
+Generate specific test instructions for Claude Code.
+Respond ONLY with valid JSON:
+{
+  "files_needing_tests": ["file.py"],
+  "test_instructions": [
+    {
+      "file": "tests/test_X.py",
+      "tests_to_write": ["test function names and what they should test"],
+      "priority": "HIGH|MEDIUM"
+    }
+  ],
+  "claude_code_instruction": "Single paragraph: Write the following tests to reach 80% coverage...",
+  "estimated_time": "X minutes"
+}'''
+print(json.dumps({'model':'claude-sonnet-4-5','max_tokens':1500,'messages':[{'role':'user','content':prompt}]}))
+          ")")
+
+          INSTRUCTION=$(echo "$RESPONSE" | python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+text=data.get('content',[{}])[0].get('text','{}').strip()
+if text.startswith('\`\`\`'):
+    text=text.split('\`\`\`')[1]
+    if text.startswith('json'): text=text[4:]
+d=json.loads(text.strip())
+print(d.get('claude_code_instruction','Write tests to reach 80% coverage.'))
+" 2>/dev/null || echo "Write tests to reach 80% coverage.")
+
+          ETA=$(echo "$RESPONSE" | python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+text=data.get('content',[{}])[0].get('text','{}').strip()
+if text.startswith('\`\`\`'):
+    text=text.split('\`\`\`')[1]
+    if text.startswith('json'): text=text[4:]
+d=json.loads(text.strip())
+print(d.get('estimated_time','unknown'))
+" 2>/dev/null || echo "unknown")
+
+          gh pr comment $PR_NUMBER --body "## 🧪 Coverage Gate — BLOCKED (${COVERAGE}% / 80% required)
+
+Plan compliance passed ✅ but test coverage is insufficient.
+
+### Claude Code Instruction
+${INSTRUCTION}
+
+**Est. time to fix:** ${ETA}
+
+### Loop
+1. Write the tests above
+2. Push to this branch
+3. Coverage re-runs automatically
+4. ≥80% + plan score ≥90 → auto-merged ✅
+
+---
+*AI Architect (claude-sonnet-4-5) • Coverage Gate • Plan Enforcement Agent v4.0 • BidDeed.AI*"
 
   # ──────────────────────────────────────────────────────
   # PASS: Auto-merge
   # ──────────────────────────────────────────────────────
   auto-merge:
     needs: [gate1-plan-required, gate2-plan-verification]
-    if: needs.gate2-plan-verification.outputs.verdict == 'PASS'
+    if: |
+      needs.gate2-plan-verification.outputs.verdict == 'PASS' &&
+      (needs.gate2-plan-verification.outputs.coverage_pct == '' ||
+       needs.gate2-plan-verification.outputs.coverage_pct >= '80')
     runs-on: ubuntu-latest
     name: "PASS — Auto-Merge"
 
@@ -504,7 +658,7 @@ print(text.strip())
             -d "{
               \"merge_method\": \"squash\",
               \"commit_title\": \"${PR_TITLE} [Plan Score: ${SCORE}/100]\",
-              \"commit_message\": \"Auto-merged by Plan Enforcement Agent v3.0. Score: ${SCORE}/100.\"
+              \"commit_message\": \"Auto-merged by Plan Enforcement Agent v4.0. Score: ${SCORE}/100.\"
             }")
 
           MERGED=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('merged',False))" 2>/dev/null || echo "False")
@@ -598,7 +752,7 @@ ${FIXES}
 3. ≥90 → auto-merged ✅
 
 ---
-*AI Architect (claude-sonnet-4-5) • Plan Enforcement Agent v3.0 • BidDeed.AI*"
+*AI Architect (claude-sonnet-4-5) • Plan Enforcement Agent v4.0 • BidDeed.AI*"
 
   # ──────────────────────────────────────────────────────
   # FAIL: Escalate to Ariel via GitHub Issue
@@ -645,7 +799,7 @@ ${ISSUES}
 3. **Force merge** — comment \`architect-override\` on PR if you've reviewed and accept risk
 
 ---
-*Escalated $(date -u '+%Y-%m-%d %H:%M UTC') • Plan Enforcement Agent v3.0 • BidDeed.AI*" \
+*Escalated $(date -u '+%Y-%m-%d %H:%M UTC') • Plan Enforcement Agent v4.0 • BidDeed.AI*" \
             --label "escalation,plan-enforcement"
 
           gh pr comment $PR_NUMBER --body "## ❌ Gate 2 — FAILED (${SCORE}/100)
@@ -655,6 +809,6 @@ Below 70 threshold. GitHub Issue created — check your issues tab.
 **Paste the issue link into Claude AI chat. AI Architect will review and recommend next steps.**
 
 ---
-*Plan Enforcement Agent v3.0 • BidDeed.AI*"
+*Plan Enforcement Agent v4.0 • BidDeed.AI*"
 
           exit 1
