@@ -65,13 +65,14 @@ jobs:
           api_key = os.environ["ANTHROPIC_API_KEY"]
           plan = open("/tmp/plan_input.txt").read()
           pr_title = os.environ.get("PR_TITLE", "")
+          schema = '{"verdict":"APPROVED","score":90,"sections_status":{"objective":"PASS","files_changed":"PASS","approach":"PASS","risks":"PASS","not_doing":"PASS","complexity":"PASS"},"issues":[],"improvements":[],"architect_note":"2 sentences","cleared_for_implementation":true}'
           prompt = (
               "You are the AI Architect for BidDeed.AI (foreclosure auction AI platform).\n"
               "Review this PLAN.md. Evaluate: Objective, Files Changed, Approach, Risks, NOT Doing, Estimated Complexity.\n"
               "Flag scope too broad, conflicts with LangGraph/Supabase/GitHub Actions, missing domain considerations.\n"
-              f"PR: {pr_title}\nPLAN:\n{plan}\n"
+              "PR: " + pr_title + "\nPLAN:\n" + plan + "\n"
               "Score 85+ = APPROVED. Below 85 = CHANGES_REQUESTED.\n"
-              'Respond ONLY with valid JSON: {"verdict":"APPROVED","score":90,"sections_status":{"objective":"PASS","files_changed":"PASS","approach":"PASS","risks":"PASS","not_doing":"PASS","complexity":"PASS"},"issues":[],"improvements":[],"architect_note":"2 sentences","cleared_for_implementation":true}'
+              "Respond ONLY with valid JSON: " + schema
           )
           payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}).encode()
           req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
@@ -323,12 +324,12 @@ jobs:
           prompt = (
               "You are the Plan Enforcement Agent for BidDeed.AI.\n"
               "Verify implementation matches the approved PLAN.md.\n"
-              f"PR: {pr_title} | Complexity: {complexity}\n"
-              f"Coverage: {coverage}% (min 80%) | Tests: {tests}\n"
-              f"PLAN:\n{plan}\n\nChanged Files:\n{files}\n\nDiff:\n{diff}\n"
+              "PR: " + pr_title + " | Complexity: " + complexity + "\n"
+              "Coverage: " + coverage + "% (min 80%) | Tests: " + tests + "\n"
+              "PLAN:\n" + plan + "\n\nChanged Files:\n" + files + "\n\nDiff:\n" + diff + "\n"
               "IMPORTANT: Penalize score if coverage<80. Flag Python files without tests as critical issue.\n"
               "PASS>=90 AND coverage>=80. WARN=70-89. FAIL<70.\n"
-              f"Respond ONLY with valid JSON: {schema}"
+              "Respond ONLY with valid JSON: " + schema
           )
           payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 2000, "messages": [{"role": "user", "content": prompt}]}).encode()
           req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
@@ -472,10 +473,10 @@ jobs:
           score = os.environ.get("SCORE", "0")
           schema = '{"priority_fixes":[{"issue":"what","file":"path.py","fix":"exactly what","urgency":"HIGH"}],"claude_code_instruction":"Execute the following fixes...","estimated_fix_time":"X min","expected_score_after_fix":92}'
           prompt = (
-              f"AI Architect for BidDeed.AI. Gate 2 WARN ({score}/100) for: {pr_title}\n"
-              f"Review: {review}\n"
+              "AI Architect for BidDeed.AI. Gate 2 WARN (" + score + "/100) for: " + pr_title + "\n"
+              "Review: " + review + "\n"
               "Write precise fix instructions for Claude Code. Specific files and actions only.\n"
-              f"Respond ONLY with valid JSON: {schema}"
+              "Respond ONLY with valid JSON: " + schema
           )
           payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}).encode()
           req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
@@ -558,9 +559,9 @@ jobs:
           coverage = os.environ.get("COVERAGE", "0")
           schema = '{"files_needing_tests":["file.py"],"test_instructions":[{"file":"tests/test_X.py","tests_to_write":["test names"],"priority":"HIGH"}],"claude_code_instruction":"Execute the following to reach 80% coverage...","estimated_time":"X minutes"}'
           prompt = (
-              f"Coverage is {coverage}% (minimum 80%). Write test instructions for Claude Code.\n"
-              f"Files needing tests: {files}\nPlan: {plan}\n"
-              f"Respond ONLY with valid JSON: {schema}"
+              "Coverage is " + coverage + "% (minimum 80%). Write test instructions for Claude Code.\n"
+              "Files needing tests: " + files + "\nPlan: " + plan + "\n"
+              "Respond ONLY with valid JSON: " + schema
           )
           payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}).encode()
           req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
