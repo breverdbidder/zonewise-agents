@@ -1,12 +1,8 @@
 # BidDeed.AI - Plan Enforcement Agent v4.0
-# Zero-human autonomous loop with test coverage gate
-#
-# PLAN PR:  AI Architect reviews PLAN.md -> approves (plan-approved label) or requests changes
-# CODE PR:  Gate 1 checks plan-approved label, Gate 2 runs coverage + Claude scoring
-# PASS (>=90 + >=80% cov) -> auto-merge
-# WARN (70-89)             -> AI Architect posts fix instructions
-# COVERAGE FAIL            -> AI Architect writes test instructions
-# FAIL (<70)               -> GitHub Issue -> Ariel escalation in Claude AI chat
+# YAML-safe: Python scripts stored as base64 env vars, decoded at runtime
+# All PR comment table rows indented inside run blocks to avoid YAML parse conflicts
+# PLAN PR -> AI Architect review -> plan-approved label
+# CODE PR -> Gate 1 (label) -> Gate 2 (coverage + Claude) -> auto-merge or fix
 
 name: Plan Enforcement Agent
 
@@ -21,17 +17,24 @@ permissions:
   statuses: write
   issues: write
 
+env:
+  SCRIPT_REVIEW_PLAN: "aW1wb3J0IGpzb24sIHN5cywgb3MsIHVybGxpYi5yZXF1ZXN0CmFwaV9rZXkgPSBvcy5lbnZpcm9uWyJBTlRIUk9QSUNfQVBJX0tFWSJdCnBsYW4gPSBvcGVuKCIvdG1wL3BsYW5fY29udGVudC50eHQiKS5yZWFkKCkKcHJfdGl0bGUgPSBvcy5lbnZpcm9uLmdldCgiUFJfVElUTEUiLCAiIikKcHJvbXB0ID0gZiIiIllvdSBhcmUgdGhlIEFJIEFyY2hpdGVjdCBmb3IgQmlkRGVlZC5BSSAoZm9yZWNsb3N1cmUgYXVjdGlvbiBBSSBwbGF0Zm9ybSkuClJldmlldyB0aGlzIFBMQU4ubWQgYW5kIGRlY2lkZSBpZiBDbGF1ZGUgQ29kZSBpcyBjbGVhcmVkIHRvIGltcGxlbWVudC4KUFI6IHtwcl90aXRsZX0KUExBTi5tZDoKe3BsYW59CkNoZWNrIGZvcjogT2JqZWN0aXZlLCBGaWxlcyBDaGFuZ2VkLCBBcHByb2FjaCwgUmlza3MsIE5PVCBEb2luZywgRXN0aW1hdGVkIENvbXBsZXhpdHkuCkZsYWcgaWYgc2NvcGUgdG9vIGJyb2FkLCBjb25mbGljdHMgd2l0aCBMYW5nR3JhcGgvU3VwYWJhc2UvR2l0SHViIEFjdGlvbnMsIG9yIG1pc3NpbmcgZG9tYWluIGNvbnNpZGVyYXRpb25zLgpSZXNwb25kIE9OTFkgd2l0aCB2YWxpZCBKU09OLCBubyBtYXJrZG93bjoKeyJ2ZXJkaWN0IjogIkFQUFJPVkVEIG9yIENIQU5HRVNfUkVRVUVTVEVEIiwgInNjb3JlIjogMCwgInNlY3Rpb25zX3N0YXR1cyI6IHsib2JqZWN0aXZlIjogIlBBU1Mgb3IgRkFJTCIsICJmaWxlc19jaGFuZ2VkIjogIlBBU1Mgb3IgRkFJTCIsICJhcHByb2FjaCI6ICJQQVNTIG9yIEZBSUwiLCAicmlza3MiOiAiUEFTUyBvciBGQUlMIiwgIm5vdF9kb2luZyI6ICJQQVNTIG9yIEZBSUwiLCAiY29tcGxleGl0eSI6ICJQQVNTIG9yIEZBSUwifSwgImlzc3VlcyI6IFtdLCAiaW1wcm92ZW1lbnRzIjogW10sICJhcmNoaXRlY3Rfbm90ZSI6ICIyIHNlbnRlbmNlcyIsICJjbGVhcmVkX2Zvcl9pbXBsZW1lbnRhdGlvbiI6IHRydWV9ClNjb3JlIDg1KyA9IEFQUFJPVkVELiIiIgpwYXlsb2FkID0geyJtb2RlbCI6ICJjbGF1ZGUtc29ubmV0LTQtNSIsICJtYXhfdG9rZW5zIjogMTUwMCwgIm1lc3NhZ2VzIjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiBwcm9tcHR9XX0KcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCgiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MS9tZXNzYWdlcyIsIGRhdGE9anNvbi5kdW1wcyhwYXlsb2FkKS5lbmNvZGUoKSkKcmVxLmFkZF9oZWFkZXIoIkNvbnRlbnQtVHlwZSIsICJhcHBsaWNhdGlvbi9qc29uIikKcmVxLmFkZF9oZWFkZXIoIngtYXBpLWtleSIsIGFwaV9rZXkpCnJlcS5hZGRfaGVhZGVyKCJhbnRocm9waWMtdmVyc2lvbiIsICIyMDIzLTA2LTAxIikKd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSkgYXMgcmVzcDoKICAgIGRhdGEgPSBqc29uLmxvYWQocmVzcCkKdGV4dCA9IGRhdGFbImNvbnRlbnQiXVswXVsidGV4dCJdLnN0cmlwKCkKaWYgdGV4dC5zdGFydHN3aXRoKCJgYGAiKToKICAgIHRleHQgPSB0ZXh0LnNwbGl0KCJgYGAiKVsxXQogICAgaWYgdGV4dC5zdGFydHN3aXRoKCJqc29uIik6IHRleHQgPSB0ZXh0WzQ6XQpwcmludCh0ZXh0LnN0cmlwKCkpCg=="
+  SCRIPT_GATE2_SCORE: "aW1wb3J0IGpzb24sIHN5cywgb3MsIHVybGxpYi5yZXF1ZXN0CmFwaV9rZXkgPSBvcy5lbnZpcm9uWyJBTlRIUk9QSUNfQVBJX0tFWSJdCnBsYW4gPSBvcGVuKCIvdG1wL2dhdGUyX3BsYW4udHh0IikucmVhZCgpCmRpZmYgPSBvcGVuKCIvdG1wL2dhdGUyX2RpZmYudHh0IikucmVhZCgpCmZpbGVzID0gb3BlbigiL3RtcC9nYXRlMl9maWxlcy50eHQiKS5yZWFkKCkKcHJfdGl0bGUgPSBvcy5lbnZpcm9uLmdldCgiUFJfVElUTEUiLCAiIikKY29tcGxleGl0eSA9IG9zLmVudmlyb24uZ2V0KCJDT01QTEVYSVRZIiwgIk1lZGl1bSIpCmNvdmVyYWdlID0gb3MuZW52aXJvbi5nZXQoIkNPVkVSQUdFIiwgIjAiKQp0ZXN0cyA9IG9zLmVudmlyb24uZ2V0KCJURVNUUyIsICIiKQpwcm9tcHQgPSBmIiIiWW91IGFyZSB0aGUgUGxhbiBFbmZvcmNlbWVudCBBZ2VudCBmb3IgQmlkRGVlZC5BSS4KVmVyaWZ5IGltcGxlbWVudGF0aW9uIG1hdGNoZXMgdGhlIGFwcHJvdmVkIFBMQU4ubWQuIFJlc3BvbmQgT05MWSB3aXRoIHZhbGlkIEpTT04sIG5vIG1hcmtkb3duLgpQUjoge3ByX3RpdGxlfSB8IENvbXBsZXhpdHk6IHtjb21wbGV4aXR5fSB8IENvdmVyYWdlOiB7Y292ZXJhZ2V9JSAobWluIDgwJSkgfCBUZXN0czoge3Rlc3RzfQpQTEFOLm1kOiB7cGxhbn0KQ2hhbmdlZCBGaWxlczoge2ZpbGVzfQpEaWZmOiB7ZGlmZn0KUmV0dXJuOiB7InZlcmRpY3QiOiAiUEFTUyIsICJzY29yZSI6IDk1LCAiZGltZW5zaW9ucyI6IHsic2NvcGVfbWF0Y2giOiB7InNjb3JlIjogOTUsICJzdGF0dXMiOiAiUEFTUyIsICJmaW5kaW5nIjogIm9uZSBzZW50ZW5jZSJ9LCAiZmlsZXNfbWF0Y2giOiB7InNjb3JlIjogOTUsICJzdGF0dXMiOiAiUEFTUyIsICJmaW5kaW5nIjogIm9uZSBzZW50ZW5jZSJ9LCAiYXBwcm9hY2hfbWF0Y2giOiB7InNjb3JlIjogOTUsICJzdGF0dXMiOiAiUEFTUyIsICJmaW5kaW5nIjogIm9uZSBzZW50ZW5jZSJ9LCAibm9fc2NvcGVfY3JlZXAiOiB7InNjb3JlIjogOTUsICJzdGF0dXMiOiAiUEFTUyIsICJmaW5kaW5nIjogIm9uZSBzZW50ZW5jZSJ9fSwgImNyaXRpY2FsX2lzc3VlcyI6IFtdLCAid2FybmluZ3MiOiBbXSwgImZpeF9pbnN0cnVjdGlvbnMiOiBbXSwgInN1bW1hcnkiOiAiMi0zIHNlbnRlbmNlcyIsICJhcmllbF9hY3Rpb24iOiAiQVBQUk9WRSJ9ClNjb3Jpbmc6IFBBU1M+PTkwIEFORCBjb3ZlcmFnZT49ODAuIFdBUk49NzAtODkuIEZBSUw8NzAuIFBlbmFsaXplIGNvdmVyYWdlPDgwLiBGbGFnIFB5dGhvbiBmaWxlcyB3aXRob3V0IHRlc3RzLiIiIgpwYXlsb2FkID0geyJtb2RlbCI6ICJjbGF1ZGUtc29ubmV0LTQtNSIsICJtYXhfdG9rZW5zIjogMjAwMCwgIm1lc3NhZ2VzIjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiBwcm9tcHR9XX0KcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCgiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MS9tZXNzYWdlcyIsIGRhdGE9anNvbi5kdW1wcyhwYXlsb2FkKS5lbmNvZGUoKSkKcmVxLmFkZF9oZWFkZXIoIkNvbnRlbnQtVHlwZSIsICJhcHBsaWNhdGlvbi9qc29uIikKcmVxLmFkZF9oZWFkZXIoIngtYXBpLWtleSIsIGFwaV9rZXkpCnJlcS5hZGRfaGVhZGVyKCJhbnRocm9waWMtdmVyc2lvbiIsICIyMDIzLTA2LTAxIikKd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSkgYXMgcmVzcDoKICAgIGRhdGEgPSBqc29uLmxvYWQocmVzcCkKdGV4dCA9IGRhdGFbImNvbnRlbnQiXVswXVsidGV4dCJdLnN0cmlwKCkKaWYgdGV4dC5zdGFydHN3aXRoKCJgYGAiKToKICAgIHRleHQgPSB0ZXh0LnNwbGl0KCJgYGAiKVsxXQogICAgaWYgdGV4dC5zdGFydHN3aXRoKCJqc29uIik6IHRleHQgPSB0ZXh0WzQ6XQpwcmludCh0ZXh0LnN0cmlwKCkpCg=="
+  SCRIPT_GEN_TESTS: "aW1wb3J0IGpzb24sIHN5cywgb3MsIHVybGxpYi5yZXF1ZXN0CmFwaV9rZXkgPSBvcy5lbnZpcm9uWyJBTlRIUk9QSUNfQVBJX0tFWSJdCnBsYW4gPSBvcGVuKCIvdG1wL2Nvdl9wbGFuLnR4dCIpLnJlYWQoKQpmaWxlcyA9IG9wZW4oIi90bXAvY292X2ZpbGVzLnR4dCIpLnJlYWQoKQpjb3ZlcmFnZSA9IG9zLmVudmlyb24uZ2V0KCJDT1ZFUkFHRSIsICIwIikKcHJvbXB0ID0gZiIiIkNvdmVyYWdlIGlzIHtjb3ZlcmFnZX0lIChtaW5pbXVtIDgwJSkuIFdyaXRlIHRlc3QgaW5zdHJ1Y3Rpb25zIGZvciBDbGF1ZGUgQ29kZS4KRmlsZXMgbmVlZGluZyB0ZXN0czoge2ZpbGVzfQpQbGFuOiB7cGxhbn0KUmVzcG9uZCBPTkxZIHdpdGggdmFsaWQgSlNPTjogeyJmaWxlc19uZWVkaW5nX3Rlc3RzIjogWyJmaWxlLnB5Il0sICJ0ZXN0X2luc3RydWN0aW9ucyI6IFt7ImZpbGUiOiAidGVzdHMvdGVzdF9YLnB5IiwgInRlc3RzX3RvX3dyaXRlIjogWyJ0ZXN0IG5hbWVzIl0sICJwcmlvcml0eSI6ICJISUdIIn1dLCAiY2xhdWRlX2NvZGVfaW5zdHJ1Y3Rpb24iOiAiRXhlY3V0ZSB0aGUgZm9sbG93aW5nIHRvIHJlYWNoIDgwJSBjb3ZlcmFnZS4uLiIsICJlc3RpbWF0ZWRfdGltZSI6ICJYIG1pbnV0ZXMifSIiIgpwYXlsb2FkID0geyJtb2RlbCI6ICJjbGF1ZGUtc29ubmV0LTQtNSIsICJtYXhfdG9rZW5zIjogMTUwMCwgIm1lc3NhZ2VzIjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiBwcm9tcHR9XX0KcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCgiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MS9tZXNzYWdlcyIsIGRhdGE9anNvbi5kdW1wcyhwYXlsb2FkKS5lbmNvZGUoKSkKcmVxLmFkZF9oZWFkZXIoIkNvbnRlbnQtVHlwZSIsICJhcHBsaWNhdGlvbi9qc29uIikKcmVxLmFkZF9oZWFkZXIoIngtYXBpLWtleSIsIGFwaV9rZXkpCnJlcS5hZGRfaGVhZGVyKCJhbnRocm9waWMtdmVyc2lvbiIsICIyMDIzLTA2LTAxIikKd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSkgYXMgcmVzcDoKICAgIGRhdGEgPSBqc29uLmxvYWQocmVzcCkKdGV4dCA9IGRhdGFbImNvbnRlbnQiXVswXVsidGV4dCJdLnN0cmlwKCkKaWYgdGV4dC5zdGFydHN3aXRoKCJgYGAiKToKICAgIHRleHQgPSB0ZXh0LnNwbGl0KCJgYGAiKVsxXQogICAgaWYgdGV4dC5zdGFydHN3aXRoKCJqc29uIik6IHRleHQgPSB0ZXh0WzQ6XQpwcmludCh0ZXh0LnN0cmlwKCkpCg=="
+  SCRIPT_GEN_FIXES: "aW1wb3J0IGpzb24sIHN5cywgb3MsIHVybGxpYi5yZXF1ZXN0CmFwaV9rZXkgPSBvcy5lbnZpcm9uWyJBTlRIUk9QSUNfQVBJX0tFWSJdCnJldmlldyA9IG9wZW4oIi90bXAvd2Fybl9yZXZpZXcudHh0IikucmVhZCgpCnByX3RpdGxlID0gb3MuZW52aXJvbi5nZXQoIlBSX1RJVExFIiwgIiIpCnNjb3JlID0gb3MuZW52aXJvbi5nZXQoIlNDT1JFIiwgIjAiKQpwcm9tcHQgPSBmIiIiQUkgQXJjaGl0ZWN0IGZvciBCaWREZWVkLkFJLiBHYXRlIDIgV0FSTiAoe3Njb3JlfS8xMDApIGZvcjoge3ByX3RpdGxlfQpSZXZpZXc6IHtyZXZpZXd9CldyaXRlIHByZWNpc2UgZml4IGluc3RydWN0aW9ucyBmb3IgQ2xhdWRlIENvZGUuIFJlc3BvbmQgT05MWSB3aXRoIHZhbGlkIEpTT046CnsicHJpb3JpdHlfZml4ZXMiOiBbeyJpc3N1ZSI6ICJ3aGF0IGlzIHdyb25nIiwgImZpbGUiOiAicGF0aC5weSIsICJmaXgiOiAiZXhhY3RseSB3aGF0IHRvIGRvIiwgInVyZ2VuY3kiOiAiSElHSCJ9XSwgImNsYXVkZV9jb2RlX2luc3RydWN0aW9uIjogIkV4ZWN1dGUgdGhlIGZvbGxvd2luZyBmaXhlcy4uLiIsICJlc3RpbWF0ZWRfZml4X3RpbWUiOiAiWCBtaW51dGVzIiwgImV4cGVjdGVkX3Njb3JlX2FmdGVyX2ZpeCI6IDkyfSIiIgpwYXlsb2FkID0geyJtb2RlbCI6ICJjbGF1ZGUtc29ubmV0LTQtNSIsICJtYXhfdG9rZW5zIjogMTUwMCwgIm1lc3NhZ2VzIjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiBwcm9tcHR9XX0KcmVxID0gdXJsbGliLnJlcXVlc3QuUmVxdWVzdCgiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MS9tZXNzYWdlcyIsIGRhdGE9anNvbi5kdW1wcyhwYXlsb2FkKS5lbmNvZGUoKSkKcmVxLmFkZF9oZWFkZXIoIkNvbnRlbnQtVHlwZSIsICJhcHBsaWNhdGlvbi9qc29uIikKcmVxLmFkZF9oZWFkZXIoIngtYXBpLWtleSIsIGFwaV9rZXkpCnJlcS5hZGRfaGVhZGVyKCJhbnRocm9waWMtdmVyc2lvbiIsICIyMDIzLTA2LTAxIikKd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcSkgYXMgcmVzcDoKICAgIGRhdGEgPSBqc29uLmxvYWQocmVzcCkKdGV4dCA9IGRhdGFbImNvbnRlbnQiXVswXVsidGV4dCJdLnN0cmlwKCkKaWYgdGV4dC5zdGFydHN3aXRoKCJgYGAiKToKICAgIHRleHQgPSB0ZXh0LnNwbGl0KCJgYGAiKVsxXQogICAgaWYgdGV4dC5zdGFydHN3aXRoKCJqc29uIik6IHRleHQgPSB0ZXh0WzQ6XQpwcmludCh0ZXh0LnN0cmlwKCkpCg=="
+  SCRIPT_SECTIONS_PARSE: "aW1wb3J0IGpzb24sc3lzLG9zCmQ9anNvbi5sb2FkKHN5cy5zdGRpbikKcz1kLmdldCgnc2VjdGlvbnNfc3RhdHVzJyx7fSkKbGFiZWxzPXsnb2JqZWN0aXZlJzonT2JqZWN0aXZlJywnZmlsZXNfY2hhbmdlZCc6J0ZpbGVzIENoYW5nZWQnLCdhcHByb2FjaCc6J0FwcHJvYWNoJywncmlza3MnOidSaXNrcycsJ25vdF9kb2luZyc6J05PVCBEb2luZycsJ2NvbXBsZXhpdHknOidDb21wbGV4aXR5J30Kb3V0PSIiCmZvciBrLGxhYmVsIGluIGxhYmVscy5pdGVtcygpOgogICAgc3Q9cy5nZXQoaywnPycpCiAgICBvdXQrPWYifCB7bGFiZWx9IHwge3N0fSB8CiIKcHJpbnQob3V0KQo="
+  SCRIPT_ISSUES_PARSE: "aW1wb3J0IGpzb24sc3lzCmQ9anNvbi5sb2FkKHN5cy5zdGRpbikKb3V0PSIiCmZvciBpIGluIGQuZ2V0KCdpc3N1ZXMnLFtdKTogb3V0Kz1mIi0ge2l9CiIKZm9yIGkgaW4gZC5nZXQoJ2ltcHJvdmVtZW50cycsW10pOiBvdXQrPWYiLSB7aX0KIgpwcmludChvdXQpCg=="
+  SCRIPT_DIMS_PARSE: "aW1wb3J0IGpzb24sc3lzLG9zCmQ9anNvbi5sb2FkKHN5cy5zdGRpbikKa2V5PW9zLmVudmlyb24uZ2V0KCJESU1fS0VZIiwic2NvcGVfbWF0Y2giKQpzPWQuZ2V0KCdkaW1lbnNpb25zJyx7fSkuZ2V0KGtleSx7fSkKcHJpbnQocy5nZXQoJ3N0YXR1cycsJz8nKSsnIC0gJytzLmdldCgnZmluZGluZycsJycpKQo="
+  SCRIPT_FIXES_FMT: "aW1wb3J0IGpzb24sc3lzCmQ9anNvbi5sb2FkKHN5cy5zdGRpbikKb3V0PSIiCmZvciBpLGYgaW4gZW51bWVyYXRlKGQuZ2V0KCdwcmlvcml0eV9maXhlcycsW10pLDEpOgogICAgb3V0Kz1mIkZpeCB7aX0gW3tmLmdldCgndXJnZW5jeScsJ01FRElVTScpfV06IHtmLmdldCgnaXNzdWUnLCcnKX0gfCB7Zi5nZXQoJ2ZpbGUnLCcnKX0gfCB7Zi5nZXQoJ2ZpeCcsJycpfQoiCnByaW50KG91dCkK"
+  SCRIPT_GATE2_COMMENT: "aW1wb3J0IG9zCmQgPSB7azogb3MuZW52aXJvbi5nZXQoaywnJykgZm9yIGsgaW4gWydWRVJESUNUJywnU0NPUkUnLCdMQUJFTCcsJ1NDT1BFJywnRklMRVNfRElNJywnQVBQUk9BQ0gnLCdDUkVFUCcsJ0NPVl9ST1cnLCdURVNUUycsJ1NVTU1BUlknXX0KYm9keSA9ICIiIiMjIEdhdGUgMiAtIHtMQUJFTH0gKHtTQ09SRX0vMTAwKQoKfCBEaW1lbnNpb24gfCBSZXN1bHQgfAp8LS0tLS0tLS0tLS18LS0tLS0tLS18CnwgU2NvcGUgbWF0Y2ggfCB7U0NPUEV9IHwKfCBGaWxlcyBtYXRjaCB8IHtGSUxFU19ESU19IHwKfCBBcHByb2FjaCBtYXRjaCB8IHtBUFBST0FDSH0gfAp8IE5vIHNjb3BlIGNyZWVwIHwge0NSRUVQfSB8CnwgVGVzdCBjb3ZlcmFnZSB8IHtDT1ZfUk9XfSB8CnwgVGVzdHMgfCB7VEVTVFN9IHwKCioqU3VtbWFyeToqKiB7U1VNTUFSWX0KCi0tLQoqUGxhbiBFbmZvcmNlbWVudCBBZ2VudCB2NC4wIC0gY2xhdWRlLXNvbm5ldC00LTUgLSBCaWREZWVkLkFJKiIiIi5mb3JtYXQoKipkKQpvcGVuKCcvdG1wL2NvbW1lbnQudHh0JywndycpLndyaXRlKGJvZHkpCg=="
+
 jobs:
 
-  # ============================================================
-  # JOB 1: AI Architect reviews PLAN.md (plan-only PRs)
-  # ============================================================
   architect-plan-review:
     runs-on: ubuntu-latest
     name: "AI Architect - Plan Review"
     outputs:
       is_plan_only: ${{ steps.detect.outputs.is_plan_only }}
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,110 +53,40 @@ jobs:
             echo "is_plan_only=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: AI Architect evaluate PLAN.md
+      - name: AI Architect - Evaluate PLAN.md
         if: steps.detect.outputs.is_plan_only == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PLAN=$(cat PLAN.md 2>/dev/null | head -c 8000 || echo "missing")
-
-          cat << 'PYEOF' > /tmp/review_plan.py
-          import json, os, urllib.request, sys
-          api_key = os.environ["ANTHROPIC_API_KEY"]
-          plan = open("/tmp/plan_input.txt").read()
-          pr_title = os.environ.get("PR_TITLE", "")
-          schema = '{"verdict":"APPROVED","score":90,"sections_status":{"objective":"PASS","files_changed":"PASS","approach":"PASS","risks":"PASS","not_doing":"PASS","complexity":"PASS"},"issues":[],"improvements":[],"architect_note":"2 sentences","cleared_for_implementation":true}'
-          prompt = (
-              "You are the AI Architect for BidDeed.AI (foreclosure auction AI platform).\n"
-              "Review this PLAN.md. Evaluate: Objective, Files Changed, Approach, Risks, NOT Doing, Estimated Complexity.\n"
-              "Flag scope too broad, conflicts with LangGraph/Supabase/GitHub Actions, missing domain considerations.\n"
-              "PR: " + pr_title + "\nPLAN:\n" + plan + "\n"
-              "Score 85+ = APPROVED. Below 85 = CHANGES_REQUESTED.\n"
-              "Respond ONLY with valid JSON: " + schema
-          )
-          payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}).encode()
-          req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
-          req.add_header("Content-Type", "application/json")
-          req.add_header("x-api-key", api_key)
-          req.add_header("anthropic-version", "2023-06-01")
-          with urllib.request.urlopen(req) as resp:
-              data = json.load(resp)
-          text = data["content"][0]["text"].strip()
-          if text.startswith("```"):
-              text = text.split("```")[1]
-              if text.startswith("json"): text = text[4:]
-          d = json.loads(text.strip())
-          print(json.dumps(d))
-          PYEOF
-
-          echo "$PLAN" > /tmp/plan_input.txt
-          REVIEW=$(PR_TITLE="$PR_TITLE" python3 /tmp/review_plan.py 2>/dev/null || echo '{"verdict":"CHANGES_REQUESTED","score":0,"architect_note":"Parse error - resubmit plan.","cleared_for_implementation":false,"sections_status":{},"issues":["Could not parse response"],"improvements":[]}')
-
-          VERDICT=$(echo "$REVIEW" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','CHANGES_REQUESTED'))" 2>/dev/null || echo "CHANGES_REQUESTED")
-          SCORE=$(echo "$REVIEW" | python3 -c "import json,sys; print(json.load(sys.stdin).get('score',0))" 2>/dev/null || echo "0")
-          NOTE=$(echo "$REVIEW" | python3 -c "import json,sys; print(json.load(sys.stdin).get('architect_note',''))" 2>/dev/null || echo "")
-
-          SECTIONS=$(echo "$REVIEW" | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          s=d.get('sections_status',{})
-          labels={'objective':'Objective','files_changed':'Files Changed','approach':'Approach','risks':'Risks','not_doing':'NOT Doing','complexity':'Complexity'}
-          out=''
-          for k,label in labels.items():
-              st=s.get(k,'?')
-              e='OK' if st=='PASS' else 'FAIL'
-              out+=f'| {label} | {e} |\n'
-          print(out)
-          " 2>/dev/null || echo "")
-
-          ISSUES=$(echo "$REVIEW" | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          out=''
-          for i in d.get('issues',[]): out+=f'- {i}\n'
-          for i in d.get('improvements',[]): out+=f'- {i}\n'
-          print(out)
-          " 2>/dev/null || echo "")
-
+          cat PLAN.md | head -c 6000 > /tmp/plan_content.txt
+          echo "$SCRIPT_REVIEW_PLAN" | base64 -d > /tmp/review_plan.py
+          echo "$SCRIPT_SECTIONS_PARSE" | base64 -d > /tmp/sections_parse.py
+          echo "$SCRIPT_ISSUES_PARSE" | base64 -d > /tmp/issues_parse.py
+          REVIEW_JSON=$(python3 /tmp/review_plan.py 2>/dev/null || echo '{"verdict":"CHANGES_REQUESTED","score":0,"architect_note":"API error - check ANTHROPIC_API_KEY","sections_status":{},"issues":["API error"],"improvements":[]}')
+          VERDICT=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','CHANGES_REQUESTED'))" 2>/dev/null || echo "CHANGES_REQUESTED")
+          SCORE=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('score',0))" 2>/dev/null || echo "0")
+          NOTE=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('architect_note',''))" 2>/dev/null || echo "")
+          SECTIONS=$(echo "$REVIEW_JSON" | python3 /tmp/sections_parse.py 2>/dev/null || echo "")
+          ISSUES=$(echo "$REVIEW_JSON" | python3 /tmp/issues_parse.py 2>/dev/null || echo "")
           if [ "$VERDICT" = "APPROVED" ]; then
-            gh pr edit "$PR_NUMBER" --add-label "plan-approved" 2>/dev/null || true
-            gh pr comment "$PR_NUMBER" --body "## AI Architect - PLAN APPROVED (${SCORE}/100)
-
-          | Section | Status |
-          |---------|--------|
-          ${SECTIONS}
-
-          **Architect note:** ${NOTE}
-
-          ### Claude Code - Cleared to implement
-          Open a new PR with your implementation. Gate 2 will verify code matches this plan.
-
-          ---
-          *AI Architect (claude-sonnet-4-5) - Plan Enforcement Agent v4.0 - BidDeed.AI*"
+            gh pr edit $PR_NUMBER --add-label "plan-approved" 2>/dev/null || \
+              curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" \
+                "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" \
+                -d '{"labels":["plan-approved"]}' > /dev/null
+            BODY=$(printf '## AI Architect - PLAN APPROVED (%s/100)\n\n' "$SCORE")
+            BODY+=$(printf '| Section | Status |\n|---------|--------|\n%s\n' "$SECTIONS")
+            BODY+=$(printf '**Architect note:** %s\n\nClaude Code - cleared to implement. Open a new PR with implementation.\n\n---\n*AI Architect (claude-sonnet-4-5) - Plan Enforcement Agent v4.0 - BidDeed.AI*' "$NOTE")
+            gh pr comment $PR_NUMBER --body "$BODY"
           else
-            gh pr comment "$PR_NUMBER" --body "## AI Architect - CHANGES REQUESTED (${SCORE}/100)
-
-          | Section | Status |
-          |---------|--------|
-          ${SECTIONS}
-
-          **Architect note:** ${NOTE}
-
-          **Issues to fix:**
-          ${ISSUES}
-
-          Push an updated PLAN.md - AI Architect will re-review automatically.
-
-          ---
-          *AI Architect (claude-sonnet-4-5) - Plan Enforcement Agent v4.0 - BidDeed.AI*"
+            BODY=$(printf '## AI Architect - CHANGES REQUESTED (%s/100)\n\n' "$SCORE")
+            BODY+=$(printf '| Section | Status |\n|---------|--------|\n%s\n\n' "$SECTIONS")
+            BODY+=$(printf '**Architect note:** %s\n\n%s\n\nFix issues above, push updated PLAN.md. Auto-reviewed on push.\n\n---\n*AI Architect - Plan Enforcement Agent v4.0 - BidDeed.AI*' "$NOTE" "$ISSUES")
+            gh pr comment $PR_NUMBER --body "$BODY"
           fi
 
-  # ============================================================
-  # JOB 2: Gate 1 - Require architect-approved plan
-  # ============================================================
   gate1-plan-required:
     needs: architect-plan-review
     if: needs.architect-plan-review.outputs.is_plan_only == 'false'
@@ -163,91 +96,71 @@ jobs:
       has_plan: ${{ steps.detect.outputs.has_plan }}
       has_code: ${{ steps.detect.outputs.has_code }}
       plan_approved: ${{ steps.detect.outputs.plan_approved }}
-      plan_content: ${{ steps.detect.outputs.plan_content }}
       complexity: ${{ steps.detect.outputs.complexity }}
       changed_files: ${{ steps.detect.outputs.changed_files }}
-
+      plan_content: ${{ steps.detect.outputs.plan_content }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check for approved plan
+      - name: Check plan and approval
         id: detect
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD 2>/dev/null || echo "")
-
           if [ -f "PLAN.md" ]; then
-            PLAN=$(cat PLAN.md | head -c 8000)
-            COMPLEXITY=$(echo "$PLAN" | grep -iE "complexity\s*[:\-]\s*(Low|Medium|High)" | grep -oiE "Low|Medium|High" | head -1 || echo "Medium")
+            COMPLEXITY=$(grep -iE "complexity.*(Low|Medium|High)" PLAN.md | grep -oiE "Low|Medium|High" | head -1 || echo "Medium")
             echo "has_plan=true" >> $GITHUB_OUTPUT
             echo "complexity=$COMPLEXITY" >> $GITHUB_OUTPUT
-            printf '%s' "$PLAN" > /tmp/plan_for_gate1.txt
-            PLAN_B64=$(base64 -w 0 /tmp/plan_for_gate1.txt)
-            echo "plan_content=$PLAN_B64" >> $GITHUB_OUTPUT
+            echo "plan_content<<PLAN_EOF" >> $GITHUB_OUTPUT
+            cat PLAN.md | head -c 8000 >> $GITHUB_OUTPUT
+            echo "PLAN_EOF" >> $GITHUB_OUTPUT
           else
             echo "has_plan=false" >> $GITHUB_OUTPUT
-            echo "complexity=Medium" >> $GITHUB_OUTPUT
+            echo "complexity=unknown" >> $GITHUB_OUTPUT
             echo "plan_content=" >> $GITHUB_OUTPUT
           fi
-
-          LABELS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" \
+          LABELS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" \
-            | python3 -c "import json,sys; print(' '.join(l['name'] for l in json.load(sys.stdin)))" 2>/dev/null || echo "")
-
-          OPEN_APPROVED=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" \
+            | python3 -c "import json,sys; print(' '.join([l['name'] for l in json.load(sys.stdin)]))" 2>/dev/null || echo "")
+          APPROVED_EXISTS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/pulls?state=open&per_page=20" \
-            | python3 -c "
-          import json,sys
-          prs=json.load(sys.stdin)
-          found=any('plan-approved' in [l['name'] for l in pr.get('labels',[])] for pr in prs)
-          print('true' if found else 'false')
-          " 2>/dev/null || echo "false")
-
-          if echo "$LABELS" | grep -q "plan-approved" || [ "$OPEN_APPROVED" = "true" ]; then
+            | python3 -c "import json,sys; prs=json.load(sys.stdin); print('found' if any('plan-approved' in [l['name'] for l in p.get('labels',[])] for p in prs) else 'none')" 2>/dev/null || echo "none")
+          if echo "$LABELS" | grep -q "plan-approved" || [ "$APPROVED_EXISTS" = "found" ]; then
             echo "plan_approved=true" >> $GITHUB_OUTPUT
           else
             echo "plan_approved=false" >> $GITHUB_OUTPUT
           fi
-
           CODE=$(echo "$CHANGED" | grep -vE "PLAN\.md|\.md$|docs/|README|CHANGELOG|LICENSE" || true)
           if [ -n "$CODE" ]; then
             echo "has_code=true" >> $GITHUB_OUTPUT
-            echo "changed_files<<FILESEOF" >> $GITHUB_OUTPUT
+            echo "changed_files<<FILES_EOF" >> $GITHUB_OUTPUT
             echo "$CODE" | head -20 >> $GITHUB_OUTPUT
-            echo "FILESEOF" >> $GITHUB_OUTPUT
+            echo "FILES_EOF" >> $GITHUB_OUTPUT
           else
             echo "has_code=false" >> $GITHUB_OUTPUT
             echo "changed_files=" >> $GITHUB_OUTPUT
           fi
 
       - name: BLOCKED - No approved plan
-        if: steps.detect.outputs.has_code == 'true' && steps.detect.outputs.plan_approved == 'false'
+        if: steps.detect.outputs.has_code == 'true' && (steps.detect.outputs.has_plan == 'false' || steps.detect.outputs.plan_approved == 'false')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment "${{ github.event.pull_request.number }}" --body "## BLOCKED - No Architect-Approved Plan
-
-          No \`plan-approved\` label found. Open a plan-only PR first.
-
-          **Valid PLAN.md requires:** Objective, Files Changed, Approach, Risks, NOT Doing, Estimated Complexity.
-
-          ---
-          *Plan Enforcement Agent v4.0 - BidDeed.AI*"
-          echo "::error::BLOCKED: No architect-approved plan."
+          gh pr comment ${{ github.event.pull_request.number }} --body "BLOCKED - No Architect-Approved Plan. Submit a PLAN.md PR first. AI Architect auto-reviews (no human needed). Once plan-approved label applied, open implementation PR. PLAN.md requires: Objective, Files Changed, Approach, Risks, NOT Doing, Estimated Complexity. -- Plan Enforcement Agent v4.0 - BidDeed.AI"
           exit 1
 
-  # ============================================================
-  # JOB 3: Gate 2 - Coverage + Claude scoring
-  # ============================================================
   gate2-plan-verification:
     needs: gate1-plan-required
-    if: needs.gate1-plan-required.outputs.has_plan == 'true' && needs.gate1-plan-required.outputs.has_code == 'true'
+    if: |
+      needs.gate1-plan-required.outputs.has_plan == 'true' &&
+      needs.gate1-plan-required.outputs.has_code == 'true' &&
+      needs.gate1-plan-required.outputs.plan_approved == 'true'
     runs-on: ubuntu-latest
-    name: "Gate 2 - Coverage + Plan Verification"
+    name: "Gate 2 - Plan Verification + Coverage"
     outputs:
       verdict: ${{ steps.score.outputs.verdict }}
       score: ${{ steps.score.outputs.score }}
@@ -255,8 +168,10 @@ jobs:
       summary: ${{ steps.score.outputs.summary }}
       critical_issues: ${{ steps.score.outputs.critical_issues }}
       coverage_pct: ${{ steps.coverage.outputs.coverage_pct }}
-      tests_result: ${{ steps.coverage.outputs.tests_result }}
-
+      scope: ${{ steps.score.outputs.scope }}
+      files_dim: ${{ steps.score.outputs.files_dim }}
+      approach: ${{ steps.score.outputs.approach }}
+      creep: ${{ steps.score.outputs.creep }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -265,161 +180,88 @@ jobs:
       - name: Run test coverage
         id: coverage
         run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null | grep "\.py$" | grep -v "test_" || echo "")
-
-          if [ -n "$CHANGED" ]; then
+          CHANGED_PY=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null | grep "\.py$" | grep -v "test_" | head -10 || echo "")
+          if [ -n "$CHANGED_PY" ]; then
             pip install pytest pytest-cov --quiet 2>/dev/null || true
-            if [ -f "requirements.txt" ]; then
-              pip install -r requirements.txt --quiet 2>/dev/null || true
-            fi
-            COV=$(python3 -m pytest tests/ --cov=src --cov-report=term-missing --tb=no -q 2>&1 | tail -20 || echo "coverage_error")
-            PCT=$(echo "$COV" | grep -oE "TOTAL[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+([0-9]+)%" | grep -oE "[0-9]+%" | tail -1 | tr -d "%" || echo "0")
-            PASSED=$(echo "$COV" | grep -oE "[0-9]+ passed" | head -1 || echo "0 passed")
-            FAILED=$(echo "$COV" | grep -oE "[0-9]+ failed" | head -1 || echo "")
-            if [ -z "$PCT" ]; then PCT="0"; fi
-            echo "coverage_pct=$PCT" >> $GITHUB_OUTPUT
-            echo "tests_result=$PASSED $FAILED" >> $GITHUB_OUTPUT
+            pip install -r requirements.txt --quiet 2>/dev/null || true
+            COV_OUT=$(python3 -m pytest tests/ --cov=src --cov-report=term-missing --tb=no -q 2>&1 | tail -20 || echo "0 passed")
+            COV_PCT=$(echo "$COV_OUT" | grep -oE "TOTAL[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+([0-9]+)%" | grep -oE "[0-9]+%" | tail -1 | tr -d "%" || echo "0")
+            TESTS=$(echo "$COV_OUT" | grep -oE "[0-9]+ (passed|failed)" | tr '\n' ' ' || echo "0 passed")
+            [ -z "$COV_PCT" ] && COV_PCT="0"
+            echo "coverage_pct=$COV_PCT" >> $GITHUB_OUTPUT
+            echo "tests_passed=$TESTS" >> $GITHUB_OUTPUT
             echo "has_python=true" >> $GITHUB_OUTPUT
           else
             echo "coverage_pct=100" >> $GITHUB_OUTPUT
-            echo "tests_result=no python changes" >> $GITHUB_OUTPUT
+            echo "tests_passed=N/A (no Python changed)" >> $GITHUB_OUTPUT
             echo "has_python=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Get PR diff
-        id: diff
+        id: get_diff
         run: |
-          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD -- '*.py' '*.js' '*.ts' '*.yml' '*.json' '*.sql' 2>/dev/null | head -c 12000 || echo "")
-          printf '%s' "$DIFF" > /tmp/pr_diff.txt
+          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD -- "*.py" "*.js" "*.ts" "*.yml" "*.json" "*.sql" 2>/dev/null | head -c 12000 || git diff HEAD~1...HEAD | head -c 12000)
+          echo "diff<<DIFF_EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "DIFF_EOF" >> $GITHUB_OUTPUT
 
       - name: Claude API - Score plan vs implementation
         id: score
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          COMPLEXITY: ${{ needs.gate1-plan-required.outputs.complexity }}
+          COVERAGE: ${{ steps.coverage.outputs.coverage_pct }}
+          TESTS: ${{ steps.coverage.outputs.tests_passed }}
         run: |
-          PLAN_B64="${{ needs.gate1-plan-required.outputs.plan_content }}"
-          PLAN=$(echo "$PLAN_B64" | base64 -d 2>/dev/null || echo "plan unavailable")
-          COVERAGE="${{ steps.coverage.outputs.coverage_pct }}"
-          TESTS="${{ steps.coverage.outputs.tests_result }}"
-          FILES="${{ needs.gate1-plan-required.outputs.changed_files }}"
-          COMPLEXITY="${{ needs.gate1-plan-required.outputs.complexity }}"
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          DIFF=$(cat /tmp/pr_diff.txt | head -c 10000)
-
-          printf '%s' "$PLAN" > /tmp/g2_plan.txt
-          printf '%s' "$DIFF" > /tmp/g2_diff.txt
-          printf '%s' "$FILES" > /tmp/g2_files.txt
-
-          cat << 'PYEOF' > /tmp/gate2_score.py
-          import json, os, urllib.request
-          api_key = os.environ["ANTHROPIC_API_KEY"]
-          plan = open("/tmp/g2_plan.txt").read()
-          diff = open("/tmp/g2_diff.txt").read()
-          files = open("/tmp/g2_files.txt").read()
-          pr_title = os.environ.get("PR_TITLE", "")
-          complexity = os.environ.get("COMPLEXITY", "Medium")
-          coverage = os.environ.get("COVERAGE", "0")
-          tests = os.environ.get("TESTS", "")
-          schema = '{"verdict":"PASS","score":95,"dimensions":{"scope_match":{"score":95,"status":"PASS","finding":"one sentence"},"files_match":{"score":95,"status":"PASS","finding":"one sentence"},"approach_match":{"score":95,"status":"PASS","finding":"one sentence"},"no_scope_creep":{"score":95,"status":"PASS","finding":"one sentence"}},"critical_issues":[],"warnings":[],"fix_instructions":[],"summary":"2-3 sentences","ariel_action":"APPROVE"}'
-          prompt = (
-              "You are the Plan Enforcement Agent for BidDeed.AI.\n"
-              "Verify implementation matches the approved PLAN.md.\n"
-              "PR: " + pr_title + " | Complexity: " + complexity + "\n"
-              "Coverage: " + coverage + "% (min 80%) | Tests: " + tests + "\n"
-              "PLAN:\n" + plan + "\n\nChanged Files:\n" + files + "\n\nDiff:\n" + diff + "\n"
-              "IMPORTANT: Penalize score if coverage<80. Flag Python files without tests as critical issue.\n"
-              "PASS>=90 AND coverage>=80. WARN=70-89. FAIL<70.\n"
-              "Respond ONLY with valid JSON: " + schema
-          )
-          payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 2000, "messages": [{"role": "user", "content": prompt}]}).encode()
-          req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
-          req.add_header("Content-Type", "application/json")
-          req.add_header("x-api-key", api_key)
-          req.add_header("anthropic-version", "2023-06-01")
-          with urllib.request.urlopen(req) as resp:
-              data = json.load(resp)
-          text = data["content"][0]["text"].strip()
-          if text.startswith("```"):
-              text = text.split("```")[1]
-              if text.startswith("json"): text = text[4:]
-          print(text.strip())
-          PYEOF
-
-          REVIEW=$(PR_TITLE="$PR_TITLE" COMPLEXITY="$COMPLEXITY" COVERAGE="$COVERAGE" TESTS="$TESTS" \
-            python3 /tmp/gate2_score.py 2>/dev/null || \
-            echo '{"verdict":"WARN","score":50,"summary":"Scoring error - manual review needed","critical_issues":[],"dimensions":{}}')
-
-          VERDICT=$(echo "$REVIEW" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','WARN'))" 2>/dev/null || echo "WARN")
-          SCORE=$(echo "$REVIEW" | python3 -c "import json,sys; print(json.load(sys.stdin).get('score',0))" 2>/dev/null || echo "0")
-          SUMMARY=$(echo "$REVIEW" | python3 -c "import json,sys; print(json.load(sys.stdin).get('summary',''))" 2>/dev/null || echo "")
-          ISSUES=$(echo "$REVIEW" | python3 -c "import json,sys; print('; '.join(json.load(sys.stdin).get('critical_issues',[])))" 2>/dev/null || echo "")
-
+          echo "${{ needs.gate1-plan-required.outputs.plan_content }}" > /tmp/gate2_plan.txt
+          echo "${{ steps.get_diff.outputs.diff }}" > /tmp/gate2_diff.txt
+          echo "${{ needs.gate1-plan-required.outputs.changed_files }}" > /tmp/gate2_files.txt
+          echo "$SCRIPT_GATE2_SCORE" | base64 -d > /tmp/gate2_score.py
+          echo "$SCRIPT_DIMS_PARSE" | base64 -d > /tmp/dims_parse.py
+          REVIEW_JSON=$(python3 /tmp/gate2_score.py 2>/dev/null || echo '{"verdict":"WARN","score":50,"summary":"API error","critical_issues":[],"dimensions":{"scope_match":{"score":50,"status":"WARN","finding":"Unknown"},"files_match":{"score":50,"status":"WARN","finding":"Unknown"},"approach_match":{"score":50,"status":"WARN","finding":"Unknown"},"no_scope_creep":{"score":50,"status":"WARN","finding":"Unknown"}}}')
+          VERDICT=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('verdict','WARN'))" 2>/dev/null || echo "WARN")
+          SCORE=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('score',0))" 2>/dev/null || echo "0")
+          SUMMARY=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('summary',''))" 2>/dev/null || echo "")
+          ISSUES=$(echo "$REVIEW_JSON" | python3 -c "import json,sys; print(chr(10).join(json.load(sys.stdin).get('critical_issues',[])))" 2>/dev/null || echo "")
+          SCOPE=$(echo "$REVIEW_JSON" | DIM_KEY=scope_match python3 /tmp/dims_parse.py 2>/dev/null || echo "?")
+          FILES_DIM=$(echo "$REVIEW_JSON" | DIM_KEY=files_match python3 /tmp/dims_parse.py 2>/dev/null || echo "?")
+          APPROACH=$(echo "$REVIEW_JSON" | DIM_KEY=approach_match python3 /tmp/dims_parse.py 2>/dev/null || echo "?")
+          CREEP=$(echo "$REVIEW_JSON" | DIM_KEY=no_scope_creep python3 /tmp/dims_parse.py 2>/dev/null || echo "?")
           echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
           echo "score=$SCORE" >> $GITHUB_OUTPUT
           echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
           echo "critical_issues=$ISSUES" >> $GITHUB_OUTPUT
-          printf '%s' "$REVIEW" > /tmp/review_output.json
-          REVIEW_B64=$(base64 -w 0 /tmp/review_output.json)
-          echo "review_json=$REVIEW_B64" >> $GITHUB_OUTPUT
+          echo "scope=$SCOPE" >> $GITHUB_OUTPUT
+          echo "files_dim=$FILES_DIM" >> $GITHUB_OUTPUT
+          echo "approach=$APPROACH" >> $GITHUB_OUTPUT
+          echo "creep=$CREEP" >> $GITHUB_OUTPUT
+          echo "review_json<<REVIEW_EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_JSON" >> $GITHUB_OUTPUT
+          echo "REVIEW_EOF" >> $GITHUB_OUTPUT
 
-      - name: Post Gate 2 result comment
+      - name: Post Gate 2 result
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
           VERDICT="${{ steps.score.outputs.verdict }}"
           SCORE="${{ steps.score.outputs.score }}"
           COVERAGE="${{ steps.coverage.outputs.coverage_pct }}"
-          TESTS="${{ steps.coverage.outputs.tests_result }}"
+          TESTS="${{ steps.coverage.outputs.tests_passed }}"
+          SCOPE="${{ steps.score.outputs.scope }}"
+          FILES_DIM="${{ steps.score.outputs.files_dim }}"
+          APPROACH="${{ steps.score.outputs.approach }}"
+          CREEP="${{ steps.score.outputs.creep }}"
           SUMMARY="${{ steps.score.outputs.summary }}"
-          REVIEW_B64="${{ steps.score.outputs.review_json }}"
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          if [ "$COVERAGE" -ge 80 ] 2>/dev/null; then COV_ROW="PASS - ${COVERAGE}%"; else COV_ROW="FAIL - ${COVERAGE}% (need 80%)"; fi
+          if [ "$VERDICT" = "PASS" ]; then LABEL="PASSED - Auto-merging"; elif [ "$VERDICT" = "WARN" ]; then LABEL="WARN - AI Architect fixing"; else LABEL="FAILED - Escalating to Ariel"; fi
+          BODY=$(printf '## Gate 2 - %s (%s/100)\n\n' "$LABEL" "$SCORE")
+          BODY+=$(printf '| Dimension | Result |\n|-----------|--------|\n')
+          BODY+=$(printf '| Scope match | %s |\n| Files match | %s |\n| Approach match | %s |\n| No scope creep | %s |\n| Test coverage | %s |\n| Tests | %s |\n\n' "$SCOPE" "$FILES_DIM" "$APPROACH" "$CREEP" "$COV_ROW" "$TESTS")
+          BODY+=$(printf '**Summary:** %s\n\n---\n*Plan Enforcement Agent v4.0 - claude-sonnet-4-5 - BidDeed.AI*' "$SUMMARY")
+          gh pr comment $PR_NUMBER --body "$BODY"
 
-          REVIEW=$(echo "$REVIEW_B64" | base64 -d 2>/dev/null || echo "{}")
-
-          get_dim() {
-            echo "$REVIEW" | python3 -c "
-          import json,sys,os
-          key=os.environ.get('K','')
-          d=json.loads(sys.stdin.read())
-          s=d.get('dimensions',{}).get(key,{})
-          print(s.get('status','?')+' - '+s.get('finding',''))
-          " K="$1" 2>/dev/null || echo "?"
-          }
-
-          SCOPE=$(get_dim scope_match)
-          FILES_DIM=$(get_dim files_match)
-          APPROACH=$(get_dim approach_match)
-          CREEP=$(get_dim no_scope_creep)
-
-          if [ "$COVERAGE" -ge 80 ] 2>/dev/null; then
-            COV_ROW="PASS - ${COVERAGE}%"
-          else
-            COV_ROW="FAIL - ${COVERAGE}% (min: 80%)"
-          fi
-
-          if [ "$VERDICT" = "PASS" ]; then LABEL="PASS - Auto-merging"
-          elif [ "$VERDICT" = "WARN" ]; then LABEL="WARN - Fixes needed"
-          else LABEL="FAIL - Escalating"; fi
-
-          gh pr comment "$PR_NUMBER" --body "## Gate 2 - ${LABEL} (${SCORE}/100)
-
-          | Dimension | Result |
-          |-----------|--------|
-          | Scope match | ${SCOPE} |
-          | Files match | ${FILES_DIM} |
-          | Approach match | ${APPROACH} |
-          | No scope creep | ${CREEP} |
-          | Test coverage | ${COV_ROW} |
-          | Tests | ${TESTS} |
-
-          **Summary:** ${SUMMARY}
-
-          ---
-          *Plan Enforcement Agent v4.0 - claude-sonnet-4-5 - BidDeed.AI*"
-
-  # ============================================================
-  # PASS: Auto-merge (score >=90 AND coverage >=80)
-  # ============================================================
   auto-merge:
     needs: [gate1-plan-required, gate2-plan-verification]
     if: |
@@ -427,7 +269,6 @@ jobs:
       needs.gate2-plan-verification.outputs.coverage_pct >= '80'
     runs-on: ubuntu-latest
     name: "PASS - Auto-Merge"
-
     steps:
       - name: Squash merge PR
         env:
@@ -436,175 +277,69 @@ jobs:
           PR_NUMBER=${{ github.event.pull_request.number }}
           SCORE="${{ needs.gate2-plan-verification.outputs.score }}"
           PR_TITLE="${{ github.event.pull_request.title }}"
-          curl -s -X PUT \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
-            -H "Content-Type: application/json" \
+          RESULT=$(curl -s -X PUT -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" \
             "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER}/merge" \
-            -d "{\"merge_method\":\"squash\",\"commit_title\":\"${PR_TITLE} [Plan Score: ${SCORE}/100]\",\"commit_message\":\"Auto-merged by Plan Enforcement Agent v4.0. Score: ${SCORE}/100.\"}"
+            -d "{\"merge_method\":\"squash\",\"commit_title\":\"${PR_TITLE} [Score:${SCORE}/100]\",\"commit_message\":\"Auto-merged by Plan Enforcement Agent v4.0\"}")
+          MERGED=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('merged',False))" 2>/dev/null || echo "False")
+          if [ "$MERGED" = "True" ]; then echo "Auto-merged PR #${PR_NUMBER} (${SCORE}/100)"; else echo "Merge result: $RESULT"; fi
 
-  # ============================================================
-  # WARN: AI Architect posts fix instructions
-  # ============================================================
-  architect-fix:
-    needs: [gate1-plan-required, gate2-plan-verification]
-    if: needs.gate2-plan-verification.outputs.verdict == 'WARN'
-    runs-on: ubuntu-latest
-    name: "WARN - AI Architect Fix Instructions"
-
-    steps:
-      - name: Generate fix instructions
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          SCORE="${{ needs.gate2-plan-verification.outputs.score }}"
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          REVIEW_B64="${{ needs.gate2-plan-verification.outputs.review_json }}"
-          REVIEW=$(echo "$REVIEW_B64" | base64 -d 2>/dev/null || echo "{}")
-
-          printf '%s' "$REVIEW" > /tmp/warn_review.txt
-
-          cat << 'PYEOF' > /tmp/gen_fixes.py
-          import json, os, urllib.request
-          api_key = os.environ["ANTHROPIC_API_KEY"]
-          review = open("/tmp/warn_review.txt").read()
-          pr_title = os.environ.get("PR_TITLE", "")
-          score = os.environ.get("SCORE", "0")
-          schema = '{"priority_fixes":[{"issue":"what","file":"path.py","fix":"exactly what","urgency":"HIGH"}],"claude_code_instruction":"Execute the following fixes...","estimated_fix_time":"X min","expected_score_after_fix":92}'
-          prompt = (
-              "AI Architect for BidDeed.AI. Gate 2 WARN (" + score + "/100) for: " + pr_title + "\n"
-              "Review: " + review + "\n"
-              "Write precise fix instructions for Claude Code. Specific files and actions only.\n"
-              "Respond ONLY with valid JSON: " + schema
-          )
-          payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}).encode()
-          req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
-          req.add_header("Content-Type", "application/json")
-          req.add_header("x-api-key", api_key)
-          req.add_header("anthropic-version", "2023-06-01")
-          with urllib.request.urlopen(req) as resp:
-              data = json.load(resp)
-          text = data["content"][0]["text"].strip()
-          if text.startswith("```"):
-              text = text.split("```")[1]
-              if text.startswith("json"): text = text[4:]
-          print(text.strip())
-          PYEOF
-
-          FIXES=$(PR_TITLE="$PR_TITLE" SCORE="$SCORE" python3 /tmp/gen_fixes.py 2>/dev/null || \
-            echo '{"claude_code_instruction":"Fix plan deviations.","priority_fixes":[],"estimated_fix_time":"unknown","expected_score_after_fix":90}')
-
-          INSTRUCTION=$(echo "$FIXES" | python3 -c "import json,sys; print(json.load(sys.stdin).get('claude_code_instruction','Fix deviations.'))" 2>/dev/null || echo "Fix deviations.")
-          ETA=$(echo "$FIXES" | python3 -c "import json,sys; print(json.load(sys.stdin).get('estimated_fix_time','unknown'))" 2>/dev/null || echo "unknown")
-          EXPECTED=$(echo "$FIXES" | python3 -c "import json,sys; print(json.load(sys.stdin).get('expected_score_after_fix',90))" 2>/dev/null || echo "90")
-
-          FIX_LIST=$(echo "$FIXES" | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          out=''
-          for i,f in enumerate(d.get('priority_fixes',[]),1):
-              out+=f'Fix {i} [{f.get(\"urgency\",\"MEDIUM\")}]: {f.get(\"issue\",\"\")} | {f.get(\"file\",\"\")} | {f.get(\"fix\",\"\")}\n'
-          print(out)
-          " 2>/dev/null || echo "")
-
-          gh pr comment "$PR_NUMBER" --body "## AI Architect - Fix Instructions for Claude Code
-
-          **Score:** ${SCORE}/100 -> **Target:** ${EXPECTED}/100 | **Est. time:** ${ETA}
-
-          ${INSTRUCTION}
-
-          ${FIX_LIST}
-
-          Push fixes to this branch - Gate 2 re-runs automatically. Score >=90 -> auto-merged.
-
-          ---
-          *AI Architect (claude-sonnet-4-5) - Plan Enforcement Agent v4.0 - BidDeed.AI*"
-
-  # ============================================================
-  # COVERAGE FAIL: Plan passed but coverage < 80%
-  # ============================================================
   coverage-fix:
     needs: [gate1-plan-required, gate2-plan-verification]
     if: |
       needs.gate2-plan-verification.outputs.verdict == 'PASS' &&
       needs.gate2-plan-verification.outputs.coverage_pct < '80'
     runs-on: ubuntu-latest
-    name: "COVERAGE FAIL - Write Tests"
-
+    name: "COVERAGE - Below 80%"
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Generate test instructions
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COVERAGE: ${{ needs.gate2-plan-verification.outputs.coverage_pct }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          COVERAGE="${{ needs.gate2-plan-verification.outputs.coverage_pct }}"
-          PLAN_B64="${{ needs.gate1-plan-required.outputs.plan_content }}"
-          PLAN=$(echo "$PLAN_B64" | base64 -d 2>/dev/null || echo "")
-          CHANGED_PY=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null | grep "\.py$" | grep -v "test_" || echo "")
+          echo "${{ needs.gate1-plan-required.outputs.plan_content }}" > /tmp/cov_plan.txt
+          git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null | grep "\.py$" | grep -v "test_" > /tmp/cov_files.txt || true
+          echo "$SCRIPT_GEN_TESTS" | base64 -d > /tmp/gen_tests.py
+          FIX_JSON=$(python3 /tmp/gen_tests.py 2>/dev/null || echo '{"claude_code_instruction":"Write unit tests to reach 80% coverage.","estimated_time":"unknown"}')
+          INSTRUCTION=$(echo "$FIX_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('claude_code_instruction','Write tests.'))" 2>/dev/null || echo "Write tests.")
+          ETA=$(echo "$FIX_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('estimated_time','unknown'))" 2>/dev/null || echo "unknown")
+          BODY=$(printf 'Coverage Gate - BLOCKED (%s%% / 80%% required)\n\nPlan compliance passed. Coverage insufficient.\n\nClaude Code: %s\n\nEst. time: %s - Push tests to re-run automatically.\n\n---\nCoverage Gate - Plan Enforcement Agent v4.0 - BidDeed.AI' "$COVERAGE" "$INSTRUCTION" "$ETA")
+          gh pr comment $PR_NUMBER --body "$BODY"
 
-          printf '%s' "$PLAN" > /tmp/cov_plan.txt
-          printf '%s' "$CHANGED_PY" > /tmp/cov_files.txt
+  architect-fix:
+    needs: [gate1-plan-required, gate2-plan-verification]
+    if: needs.gate2-plan-verification.outputs.verdict == 'WARN'
+    runs-on: ubuntu-latest
+    name: "WARN - AI Architect Fix"
+    steps:
+      - name: Post fix instructions
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          SCORE: ${{ needs.gate2-plan-verification.outputs.score }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          echo "${{ needs.gate2-plan-verification.outputs.review_json }}" > /tmp/warn_review.txt
+          echo "$SCRIPT_GEN_FIXES" | base64 -d > /tmp/gen_fixes.py
+          echo "$SCRIPT_FIXES_FMT" | base64 -d > /tmp/fixes_fmt.py
+          FIX_JSON=$(python3 /tmp/gen_fixes.py 2>/dev/null || echo '{"claude_code_instruction":"Fix plan deviations.","priority_fixes":[],"estimated_fix_time":"unknown","expected_score_after_fix":90}')
+          INSTRUCTION=$(echo "$FIX_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('claude_code_instruction','Fix deviations.'))" 2>/dev/null || echo "Fix deviations.")
+          ETA=$(echo "$FIX_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('estimated_fix_time','unknown'))" 2>/dev/null || echo "unknown")
+          EXPECTED=$(echo "$FIX_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('expected_score_after_fix',90))" 2>/dev/null || echo "90")
+          FIXES=$(echo "$FIX_JSON" | python3 /tmp/fixes_fmt.py 2>/dev/null || echo "")
+          BODY=$(printf 'AI Architect - Fix Instructions (%s/100 -> %s/100)\n\nEst. fix time: %s\n\nClaude Code: %s\n\n%s\n\nPush fixes. >=90 score + >=80%% coverage = auto-merge.\n\n---\nAI Architect - Plan Enforcement Agent v4.0 - BidDeed.AI' "$SCORE" "$EXPECTED" "$ETA" "$INSTRUCTION" "$FIXES")
+          gh pr comment $PR_NUMBER --body "$BODY"
 
-          cat << 'PYEOF' > /tmp/gen_tests.py
-          import json, os, urllib.request
-          api_key = os.environ["ANTHROPIC_API_KEY"]
-          plan = open("/tmp/cov_plan.txt").read()
-          files = open("/tmp/cov_files.txt").read()
-          coverage = os.environ.get("COVERAGE", "0")
-          schema = '{"files_needing_tests":["file.py"],"test_instructions":[{"file":"tests/test_X.py","tests_to_write":["test names"],"priority":"HIGH"}],"claude_code_instruction":"Execute the following to reach 80% coverage...","estimated_time":"X minutes"}'
-          prompt = (
-              "Coverage is " + coverage + "% (minimum 80%). Write test instructions for Claude Code.\n"
-              "Files needing tests: " + files + "\nPlan: " + plan + "\n"
-              "Respond ONLY with valid JSON: " + schema
-          )
-          payload = json.dumps({"model": "claude-sonnet-4-5", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]}).encode()
-          req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload)
-          req.add_header("Content-Type", "application/json")
-          req.add_header("x-api-key", api_key)
-          req.add_header("anthropic-version", "2023-06-01")
-          with urllib.request.urlopen(req) as resp:
-              data = json.load(resp)
-          text = data["content"][0]["text"].strip()
-          if text.startswith("```"):
-              text = text.split("```")[1]
-              if text.startswith("json"): text = text[4:]
-          print(text.strip())
-          PYEOF
-
-          RESULT=$(COVERAGE="$COVERAGE" python3 /tmp/gen_tests.py 2>/dev/null || \
-            echo '{"claude_code_instruction":"Write tests to reach 80% coverage.","estimated_time":"unknown"}')
-
-          INSTRUCTION=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('claude_code_instruction','Write tests to reach 80% coverage.'))" 2>/dev/null || echo "Write tests.")
-          ETA=$(echo "$RESULT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('estimated_time','unknown'))" 2>/dev/null || echo "unknown")
-
-          gh pr comment "$PR_NUMBER" --body "## Coverage Gate - BLOCKED (${COVERAGE}% / 80% required)
-
-          Plan compliance passed but coverage is insufficient.
-
-          ${INSTRUCTION}
-
-          **Est. time:** ${ETA}
-
-          Push tests to this branch - re-runs automatically. >=80% + score >=90 -> auto-merged.
-
-          ---
-          *AI Architect (claude-sonnet-4-5) - Coverage Gate - Plan Enforcement Agent v4.0 - BidDeed.AI*"
-
-  # ============================================================
-  # FAIL: Escalate to Ariel
-  # ============================================================
   escalate-to-ariel:
     needs: [gate1-plan-required, gate2-plan-verification]
     if: needs.gate2-plan-verification.outputs.verdict == 'FAIL'
     runs-on: ubuntu-latest
     name: "FAIL - Escalate to Ariel"
-
     steps:
       - name: Create escalation issue
         env:
@@ -616,32 +351,9 @@ jobs:
           ISSUES="${{ needs.gate2-plan-verification.outputs.critical_issues }}"
           PR_URL="${{ github.event.pull_request.html_url }}"
           PR_TITLE="${{ github.event.pull_request.title }}"
-
           gh issue create \
-            --title "ESCALATION: PR #${PR_NUMBER} failed plan verification (${SCORE}/100)" \
-            --body "## Plan Enforcement Agent - FAIL Escalation
-
-          Paste this issue URL into Claude AI chat for AI Architect recommendation.
-
-          **PR:** [#${PR_NUMBER} - ${PR_TITLE}](${PR_URL})
-          **Score:** ${SCORE}/100 (minimum: 70)
-          **Summary:** ${SUMMARY}
-          **Critical Issues:** ${ISSUES}
-
-          **Options:**
-          1. Paste URL into Claude AI chat - AI Architect recommends path forward
-          2. Close PR - start over with new plan
-          3. Comment 'architect-override' on PR if you accept the risk
-
-          ---
-          *Plan Enforcement Agent v4.0 - BidDeed.AI*" \
+            --title "ESCALATION: PR #${PR_NUMBER} failed (${SCORE}/100)" \
+            --body "Plan Enforcement Agent FAIL Escalation. @ariel-shapira paste this URL into Claude AI chat. PR: ${PR_URL} Score: ${SCORE}/100 (min 70). Summary: ${SUMMARY}. Issues: ${ISSUES}. Options: 1) Paste URL in Claude AI chat 2) Close PR and start over 3) Comment architect-override to force merge. Escalated $(date -u '+%Y-%m-%d %H:%M UTC') - Plan Enforcement Agent v4.0" \
             --label "escalation,plan-enforcement"
-
-          gh pr comment "$PR_NUMBER" --body "## Gate 2 - FAILED (${SCORE}/100)
-
-          Below 70 threshold. GitHub Issue created - check issues tab.
-          Paste issue link into Claude AI chat for next steps.
-
-          ---
-          *Plan Enforcement Agent v4.0 - BidDeed.AI*"
+          gh pr comment $PR_NUMBER --body "FAILED (${SCORE}/100) - Escalated to Ariel. GitHub Issue created. Paste the issue link into Claude AI chat. --- Plan Enforcement Agent v4.0 - BidDeed.AI"
           exit 1
