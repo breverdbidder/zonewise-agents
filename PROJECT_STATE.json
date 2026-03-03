@@ -1,1 +1,77 @@
-{"version":"1.0.0","phase":"FOUNDATION","next_task":"TASK-001"}
+{
+  "project": "ZoneWise.AI",
+  "version": "1.0.0",
+  "last_updated": "2026-03-03",
+  "phase": "FOUNDATION",
+  "sale_types_covered": [
+    "foreclosure",
+    "tax_deed"
+  ],
+  "counties_target": 67,
+  "counties_active": 0,
+  "next_task": "TASK-001 \u2014 Create multi_county_auctions Supabase table",
+  "supabase_url": "mocerqjnksmhcjzxrewo.supabase.co",
+  "status": {
+    "prompts": "COMPLETE \u2014 12 prompts in docs/PROMPT_ENGINEERING.md",
+    "supabase_schema": "NOT STARTED \u2014 TASK-001 through TASK-004",
+    "scrapers": "NOT STARTED \u2014 TASK-005 through TASK-007",
+    "agents": "NOT STARTED \u2014 TASK-008 through TASK-012",
+    "api": "NOT STARTED \u2014 TASK-013 through TASK-014",
+    "delivery": "NOT STARTED \u2014 TASK-015 through TASK-016",
+    "github_actions": "NOT STARTED \u2014 TASK-017",
+    "tests": "NOT STARTED \u2014 TASK-018 through TASK-020"
+  },
+  "architecture": {
+    "framework": "LangGraph",
+    "backend": "FastAPI on Render",
+    "scraper": "AgentQL on Modal",
+    "database": "Supabase",
+    "delivery": "Telegram + Email (Resend)",
+    "ui": "Split-screen chat (Next.js on Vercel)"
+  },
+  "hook_model_status": {
+    "trigger": {
+      "prompts": "COMPLETE",
+      "agent": "NOT BUILT",
+      "files": [
+        "trigger_nightly_digest.md",
+        "trigger_anomaly_alert.md",
+        "trigger_referral_unlock.md"
+      ]
+    },
+    "action": {
+      "prompts": "COMPLETE",
+      "agent": "NOT BUILT",
+      "files": [
+        "action_nlp_chatbot.md",
+        "action_onboarding.md",
+        "action_bid_decision.md"
+      ]
+    },
+    "reward": {
+      "prompts": "COMPLETE",
+      "agent": "NOT BUILT",
+      "files": [
+        "reward_weekly_insight.md",
+        "reward_performance_scorecard.md",
+        "reward_tribe_leaderboard.md"
+      ]
+    },
+    "investment": {
+      "prompts": "COMPLETE",
+      "agent": "NOT BUILT",
+      "files": [
+        "investment_profile_learning.md",
+        "investment_pipeline_manager.md",
+        "investment_match_scorer.md"
+      ]
+    }
+  },
+  "recent_decisions": [
+    {
+      "date": "2026-03-03",
+      "decision": "Created 12-prompt Hook Model playbook \u2014 foreclosure + tax deed fully distinct",
+      "outcome": "docs/PROMPT_ENGINEERING.md committed"
+    }
+  ]
+}
