@@ -1,0 +1,66 @@
+# ZoneWise.AI Nightly Pipeline
+# Runs at 11 PM EST (4 AM UTC) every day
+# Covers both foreclosure sales and tax deed sales
+
+name: Nightly ZoneWise Pipeline
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 11 PM EST = 4 AM UTC
+  workflow_dispatch:      # manual trigger for testing
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  AGENTQL_API_KEY: ${{ secrets.AGENTQL_API_KEY }}
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  ARIEL_TELEGRAM_ID: ${{ secrets.ARIEL_TELEGRAM_ID }}
+
+jobs:
+  nightly-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240  # 4 hour max (pipeline should complete by 3 AM)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Phase 1 — Scrape (foreclosure + tax deed in parallel)
+        id: scrape
+        run: python agents/orchestrator.py --phase=1
+        continue-on-error: true
+
+      - name: Phase 2 — Analyze
+        id: analyze
+        run: python agents/orchestrator.py --phase=2
+        continue-on-error: true
+
+      - name: Phase 3 — Personalize
+        id: personalize
+        run: python agents/orchestrator.py --phase=3
+        continue-on-error: true
+
+      - name: Phase 4 — Generate Digests
+        id: generate
+        run: python agents/orchestrator.py --phase=4
+        continue-on-error: true
+
+      - name: Phase 5 — Deliver
+        id: deliver
+        run: python agents/orchestrator.py --phase=5
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          python scripts/telegram_alert.py \
+            --message="ZoneWise nightly pipeline FAILED. Check GitHub Actions for details." \
+            --chat-id=$ARIEL_TELEGRAM_ID
