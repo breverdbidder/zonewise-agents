@@ -36,12 +36,17 @@ Find first unchecked item. Execute. Mark [x] when done. Push.
 
 ## PHASE 2 — SCRAPERS
 
-- [ ] **TASK-005** `[HOOK:action][foreclosure]` Build `scrapers/foreclosure_scraper.py`
-  - AgentQL targeting county RealForeclose portals
-  - Start: Brevard, Orange, Polk, Hillsborough, Palm Beach
-  - Output: multi_county_auctions rows with sale_type="foreclosure"
-  - Anti-detection: 3-7s rotating delays, session rotation
-  - Retry 3x per county, log failures to daily_metrics
+- [x] **TASK-005** `[HOOK:action][foreclosure]` Build `scrapers/foreclosure_scraper.py` (2026-03-03)
+  - AJAX scraper (httpx, not AgentQL) targeting RealForeclose portals
+  - @A-@L shorthand expansion, AD_LBL/AD_DTA field parsing
+  - Handles both `<table>` (Hillsborough) and `<div>` (Orange) HTML layouts
+  - Auction type filtering: only FORECLOSURE items (TAXDEED correctly skipped)
+  - 5 counties configured: Brevard, Orange, Polk, Hillsborough, Palm Beach
+  - Anti-detection: 3-7s rotating delays, session persistence via httpx client
+  - Retry 3x per county with backoff
+  - Dedup: checks existing case_numbers before insert
+  - VERIFIED: Hillsborough 3 FC scraped + inserted, Orange 5 FC scraped, Brevard 0 FC (only TD currently)
+  - Legacy migration: 309 rows from old schema (289 FC, 20 TD) — VERIFIED
 
 - [ ] **TASK-006** `[HOOK:action][tax_deed]` Build `scrapers/tax_deed_scraper.py`
   - AgentQL targeting county tax deed portals (same 5 counties)
@@ -156,3 +161,5 @@ Find first unchecked item. Execute. Mark [x] when done. Push.
 - [x] Repository structure scaffolded (2026-03-03)
 - [x] Supabase schema — 7 tables created and verified (2026-03-03)
 - [x] 14 prompt files stored in agents/prompts/ (2026-03-03)
+- [x] Legacy migration — 309 rows from old schema (289 FC, 20 TD) (2026-03-03)
+- [x] Foreclosure scraper — AJAX-based, 5 counties, dedup, dual HTML layout support (2026-03-03)

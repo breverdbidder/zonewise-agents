@@ -8,13 +8,13 @@
     "tax_deed"
   ],
   "counties_target": 67,
-  "counties_active": 0,
-  "next_task": "TASK-005 \u2014 Build foreclosure scraper",
+  "counties_active": 5,
+  "next_task": "TASK-006 \u2014 Build tax deed scraper",
   "supabase_url": "mocerqjnksmhcjzxrewo.supabase.co",
   "status": {
     "prompts": "COMPLETE \u2014 12 prompts in docs/PROMPT_ENGINEERING.md",
     "supabase_schema": "COMPLETE \u2014 7 tables created and verified (2026-03-03)",
-    "scrapers": "NOT STARTED \u2014 TASK-005 through TASK-007",
+    "scrapers": "IN PROGRESS \u2014 TASK-005 complete (foreclosure), TASK-006 + TASK-007 pending",
     "agents": "NOT STARTED \u2014 TASK-008 through TASK-012",
     "api": "NOT STARTED \u2014 TASK-013 through TASK-014",
     "delivery": "NOT STARTED \u2014 TASK-015 through TASK-016",
@@ -77,6 +77,11 @@
       "date": "2026-03-03",
       "decision": "Supabase schema COMPLETE \u2014 7 tables with sale_type constraints, 14 prompt files stored",
       "outcome": "TASK-001 through TASK-004 complete. Old tables renamed to _legacy (309 auctions, 4176 insights preserved)."
+    },
+    {
+      "date": "2026-03-03",
+      "decision": "Foreclosure scraper COMPLETE \u2014 AJAX-based (httpx), handles both table and div HTML layouts across counties",
+      "outcome": "TASK-005 complete. 309 legacy rows migrated (289 FC, 20 TD). Live scrape verified: Hillsborough 3 FC inserted, Orange 5 FC parsed. Brevard has 0 FC currently (only TD). Dedup logic prevents duplicate inserts."
     }
   ]
 }
