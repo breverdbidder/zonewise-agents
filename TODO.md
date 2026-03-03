@@ -8,28 +8,29 @@ Find first unchecked item. Execute. Mark [x] when done. Push.
 
 ## PHASE 1 — SUPABASE SCHEMA
 
-- [ ] **TASK-001** `[HOOK:action][both]` Create `multi_county_auctions` table
-  - sale_type NOT NULL CHECK (sale_type IN ('foreclosure', 'tax_deed'))
+- [x] **TASK-001** `[HOOK:action][both]` Create `multi_county_auctions` table (2026-03-03)
+  - sale_type NOT NULL CHECK (sale_type IN ('foreclosure', 'tax_deed')) — VERIFIED
   - Foreclosure fields: case_number, judgment_amount, plaintiff
   - Tax deed fields: cert_number, opening_bid, outstanding_certs_total, portal_url
   - Common: county, property_address, sale_date, bcpao_data (jsonb)
-  - SQL in: docs/ARCHITECTURE.md
+  - Old table renamed to multi_county_auctions_legacy (309 rows preserved)
 
-- [ ] **TASK-002** `[HOOK:investment][both]` Create `user_profiles` table
-  - foreclosure_profile JSONB (county_preferences, judgment_range, bid_ratio_floor, hoa_tolerance)
-  - tax_deed_profile JSONB (county_preferences, opening_bid_range, max_cert_exposure_pct_arv, min_net_spread)
+- [x] **TASK-002** `[HOOK:investment][both]` Create `user_profiles` table (2026-03-03)
+  - foreclosure_profile JSONB — VERIFIED separate column
+  - tax_deed_profile JSONB — VERIFIED separate column
   - sale_type_preference TEXT DEFAULT 'both'
-  - SQL in: docs/ARCHITECTURE.md
 
-- [ ] **TASK-003** `[HOOK:investment][both]` Create `deal_pipeline` table
-  - sale_type NOT NULL — this constraint is mandatory, never drop it
+- [x] **TASK-003** `[HOOK:investment][both]` Create `deal_pipeline` table (2026-03-03)
+  - sale_type NOT NULL — VERIFIED: null insert rejected (error 23502)
   - identifier TEXT — case_number for foreclosure, cert_number for tax deed
   - foreclosure_fields JSONB, tax_deed_fields JSONB (separate, not mixed)
-  - SQL in: docs/ARCHITECTURE.md
 
-- [ ] **TASK-004** `[HOOK:all][both]` Create supporting tables
-  - digest_history, insights, daily_metrics, claude_context_checkpoints
-  - SQL in: docs/ARCHITECTURE.md
+- [x] **TASK-004** `[HOOK:all][both]` Create supporting tables (2026-03-03)
+  - digest_history — VERIFIED (status CHECK, user_id FK)
+  - insights — VERIFIED (sale_type NOT NULL CHECK incl. 'both')
+  - daily_metrics — VERIFIED (metric_date UNIQUE)
+  - claude_context_checkpoints — VERIFIED (checkpoint_phase CHECK)
+  - Old tables renamed: daily_metrics_legacy, insights_legacy, claude_context_checkpoints_legacy
 
 ---
 
@@ -153,3 +154,5 @@ Find first unchecked item. Execute. Mark [x] when done. Push.
 - [x] docs/ARCHITECTURE.md — System design + SQL schema (2026-03-03)
 - [x] docs/PROMPT_QA_GATE.md — Deployment quality gate (2026-03-03)
 - [x] Repository structure scaffolded (2026-03-03)
+- [x] Supabase schema — 7 tables created and verified (2026-03-03)
+- [x] 14 prompt files stored in agents/prompts/ (2026-03-03)

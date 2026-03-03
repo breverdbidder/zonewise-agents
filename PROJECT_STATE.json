@@ -9,11 +9,11 @@
   ],
   "counties_target": 67,
   "counties_active": 0,
-  "next_task": "TASK-001 \u2014 Create multi_county_auctions Supabase table",
+  "next_task": "TASK-005 \u2014 Build foreclosure scraper",
   "supabase_url": "mocerqjnksmhcjzxrewo.supabase.co",
   "status": {
     "prompts": "COMPLETE \u2014 12 prompts in docs/PROMPT_ENGINEERING.md",
-    "supabase_schema": "NOT STARTED \u2014 TASK-001 through TASK-004",
+    "supabase_schema": "COMPLETE \u2014 7 tables created and verified (2026-03-03)",
     "scrapers": "NOT STARTED \u2014 TASK-005 through TASK-007",
     "agents": "NOT STARTED \u2014 TASK-008 through TASK-012",
     "api": "NOT STARTED \u2014 TASK-013 through TASK-014",
@@ -72,6 +72,11 @@
       "date": "2026-03-03",
       "decision": "Created 12-prompt Hook Model playbook \u2014 foreclosure + tax deed fully distinct",
       "outcome": "docs/PROMPT_ENGINEERING.md committed"
+    },
+    {
+      "date": "2026-03-03",
+      "decision": "Supabase schema COMPLETE \u2014 7 tables with sale_type constraints, 14 prompt files stored",
+      "outcome": "TASK-001 through TASK-004 complete. Old tables renamed to _legacy (309 auctions, 4176 insights preserved)."
     }
   ]
 }
