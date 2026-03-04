@@ -1,7 +1,7 @@
 {
   "project": "ZoneWise.AI",
   "version": "1.1.0",
-  "last_updated": "2026-03-03",
+  "last_updated": "2026-03-04",
   "phase": "FOUNDATION",
   "sale_types_covered": [
     "foreclosure",
@@ -19,7 +19,7 @@
     "agents": "NOT STARTED \u2014 TASK-008 through TASK-012",
     "api": "NOT STARTED \u2014 TASK-013 through TASK-014",
     "delivery": "NOT STARTED \u2014 TASK-015 through TASK-016",
-    "propertyonion_parity": "AUDIT SCRIPT COMPLETE \u2014 scrapers/parity_audit.py (9 phases), .github/workflows/parity_audit.yml (weekly + manual trigger). ZW-only audit verified: 241 rows, HOA detection active (18 rows), BCPAO enriched 230/241 (95.4%). PO authenticated scrape requires GitHub Actions (secrets). Known gaps: beds=0% (Cloudflare-blocked building API), non-Brevard counties missing plaintiff/judgment_amount/photo_url (enrichment pipeline needed).",
+    "propertyonion_parity": "LIVE PARITY AUDIT COMPLETE \u2014 Playwright PO scraper extracts 191 listings across 5 counties. Parity: Brevard ZW AHEAD (162 vs 17), Hillsborough GAP=16, Orange GAP=37, Polk GAP=25, Palm Beach GAP=27. Gaps = data source timing (PO aggregates multi-source, RF shows current calendar). Count-based gap closer re-scrapes RF + inserts new rows. Weekly GitHub Actions (Mon 11am UTC). Fallback: Playwright->Browserless->Apify.",
     "timeshare_exclusion": "ACTIVE \u2014 Orange County timeshare rows excluded at scraper and audit level",
     "github_actions": "NOT STARTED \u2014 TASK-017",
     "tests": "NOT STARTED \u2014 TASK-018 through TASK-020"
@@ -71,6 +71,11 @@
     }
   },
   "recent_decisions": [
+    {
+      "date": "2026-03-04",
+      "decision": "PropertyOnion LIVE parity audit COMPLETE with Playwright scraper",
+      "outcome": "Replaced Firecrawl (broken on Angular SPA) with Playwright sync API. 3 iterations: PrimeNG input fix (fill() vs click()+type()), login verification fix, JS-based DOM extraction for Angular components. 191 listings extracted (Brevard 17, Hillsborough 45, Orange 47, Polk 38, Palm Beach 44). Count-based gap closing (PO uses addresses, ZW uses case/cert numbers). Browserless+Apify fallbacks created but untested (no API keys). 4 commits: 4287c57, 0c61d62, 4ea1b00, 22e9e63."
+    },
     {
       "date": "2026-03-03",
       "decision": "PropertyOnion parity audit script COMPLETE",
