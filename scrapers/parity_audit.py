@@ -48,20 +48,15 @@ log = logging.getLogger("parity_audit")
 # Credentials — from environment only, NEVER hardcoded
 # ---------------------------------------------------------------------------
 
-FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY", "")
-FIRECRAWL_BASE = "https://api.firecrawl.dev/v1"
-
 PO_EMAIL = os.environ.get("PROPERTYONION_EMAIL", "")
 PO_PASSWORD = os.environ.get("PROPERTYONION_PASSWORD", "")
 
-PO_LOGIN_URL = "https://propertyonion.com/login"
-
-COUNTY_PO_URLS = {
-    "brevard": "https://propertyonion.com/property_search/Brevard-County",
-    "hillsborough": "https://propertyonion.com/property_search/Hillsborough-County",
-    "orange": "https://propertyonion.com/property_search/Orange-County",
-    "polk": "https://propertyonion.com/property_search/Polk-County",
-    "palm_beach": "https://propertyonion.com/property_search/Palm-Beach-County",
+COUNTY_PO_PATHS = {
+    "brevard":      "/property_search/Brevard-County",
+    "hillsborough": "/property_search/Hillsborough-County",
+    "orange":       "/property_search/Orange-County",
+    "polk":         "/property_search/Polk-County",
+    "palm_beach":   "/property_search/Palm-Beach-County",
 }
 
 ACTIVE_COUNTIES = ["brevard", "hillsborough", "orange", "polk", "palm_beach"]
@@ -127,407 +122,235 @@ def check_secrets(require_po: bool = True) -> list[str]:
         required.update({
             "PROPERTYONION_EMAIL": PO_EMAIL,
             "PROPERTYONION_PASSWORD": PO_PASSWORD,
-            "FIRECRAWL_API_KEY": FIRECRAWL_API_KEY,
         })
     return [k for k, v in required.items() if not v]
 
 
 # ---------------------------------------------------------------------------
-# PHASE 1 — PropertyOnion Scraping via Firecrawl
+# PHASE 1 — PropertyOnion Scraping (Playwright -> Browserless -> Apify)
 # ---------------------------------------------------------------------------
 
-def _build_po_login_actions(county_url: str) -> list[dict]:
-    """Build Firecrawl action chain: login + navigate to county page.
-
-    Embeds login at the START of every call because Firecrawl
-    creates a new browser session per call (cookies don't persist).
-    Uses executeJavascript for Angular form filling (same pattern as BECA).
-    """
-    # JS to fill login form and dispatch input events for Angular change detection
-    js_fill = (
-        "var emailInput = document.querySelector("
-        "'input[type=\"email\"], input[name=\"email\"], #email');"
-        "var passInput = document.querySelector("
-        "'input[type=\"password\"], input[name=\"password\"], #password');"
-        "if (emailInput) {"
-        f"  emailInput.value = '{PO_EMAIL}';"
-        "  emailInput.dispatchEvent(new Event('input', {bubbles: true}));"
-        "  emailInput.dispatchEvent(new Event('change', {bubbles: true}));"
-        "}"
-        "if (passInput) {"
-        f"  passInput.value = '{PO_PASSWORD}';"
-        "  passInput.dispatchEvent(new Event('input', {bubbles: true}));"
-        "  passInput.dispatchEvent(new Event('change', {bubbles: true}));"
-        "}"
-    )
-
-    return [
-        # Wait for page to render
-        {"type": "wait", "milliseconds": 5000},
-        # Fill credentials via JS (Angular forms need dispatched events)
-        {"type": "executeJavascript", "script": js_fill},
-        {"type": "wait", "milliseconds": 1000},
-        # Click login/submit button
-        {"type": "click", "selector": (
-            "button[type='submit'], .login-btn, "
-            "input[type='submit'], button.btn-primary"
-        )},
-        {"type": "wait", "milliseconds": 6000},
-        # Navigate to county search page
-        {"type": "executeJavascript", "script": (
-            f"window.location.href = '{county_url}';"
-        )},
-        {"type": "wait", "milliseconds": 8000},
-    ]
-
-
-def _firecrawl_scrape(county_slug: str, page: int = 1) -> dict:
-    """Execute a single Firecrawl scrape call for a PO county page.
-
-    Handles login + navigation + content capture in one action chain.
-    Returns raw Firecrawl response dict.
-    """
-    county_url = COUNTY_PO_URLS[county_slug]
-    if page > 1:
-        county_url += f"?page={page}"
-
-    actions = _build_po_login_actions(county_url)
-
-    payload = {
-        "url": PO_LOGIN_URL,
-        "formats": ["markdown", "html"],
-        "waitFor": 3000,
-        "timeout": 60000,
-        "actions": actions,
-    }
-
-    with httpx.Client(timeout=120.0) as client:
-        resp = client.post(
-            f"{FIRECRAWL_BASE}/scrape",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {FIRECRAWL_API_KEY}",
-                "Content-Type": "application/json",
-            },
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-def parse_po_markdown(md: str, html: str, county_slug: str) -> list[dict]:
-    """Parse PropertyOnion response into listing dicts.
-
-    Tries markdown table parsing first, falls back to HTML regex.
-    Excludes Orange County timeshare rows.
-    """
-    listings = []
-
-    # Try markdown table parsing: look for rows between | delimiters
-    lines = md.split("\n")
-    header_idx = None
-    headers = []
-
-    for i, line in enumerate(lines):
-        if "|" in line and any(
-            kw in line.lower()
-            for kw in ["case", "cert", "address", "sale date", "auction"]
-        ):
-            headers = [
-                h.strip().lower().replace(" ", "_")
-                for h in line.split("|")
-                if h.strip()
-            ]
-            header_idx = i
-            break
-
-    if header_idx is not None and headers:
-        # Skip separator row (---) after header
-        data_start = header_idx + 2
-        for line in lines[data_start:]:
-            if "|" not in line or line.strip().startswith("---"):
-                if not line.strip():
-                    break
-                continue
-            cells = [c.strip() for c in line.split("|") if c.strip() != ""]
-            if len(cells) < 2:
-                continue
-
-            row = {}
-            for j, header in enumerate(headers):
-                if j < len(cells):
-                    row[header] = cells[j] if cells[j] != "-" else None
-
-            listing = _map_po_fields(row)
-            if listing.get("identifier"):
-                # Orange County: skip timeshares
-                if county_slug == "orange" and is_timeshare(listing):
-                    continue
-                listings.append(listing)
-
-    # Fallback: parse from HTML if markdown yielded nothing
-    if not listings and html:
-        listings = _parse_po_html(html, county_slug)
-
-    return listings
-
-
-def _map_po_fields(row: dict) -> dict:
-    """Map PropertyOnion field names to our standard fields."""
-    def _get(keys: list[str]) -> Optional[str]:
-        for k in keys:
-            val = row.get(k)
-            if val:
-                return str(val).strip()
-        return None
-
-    def _currency(val: Optional[str]) -> Optional[float]:
-        if not val:
-            return None
-        clean = re.sub(r"[^0-9.]", "", val)
-        try:
-            return float(clean) if clean else None
-        except ValueError:
-            return None
-
-    def _int_val(val: Optional[str]) -> Optional[int]:
-        if not val:
-            return None
-        clean = re.sub(r"[^0-9]", "", val)
-        try:
-            return int(clean) if clean else None
-        except ValueError:
-            return None
-
-    identifier = _get([
-        "case_number", "case_#", "case", "cert_number", "cert_#",
-        "certificate", "identifier", "id",
-    ])
-    sale_type_raw = _get([
-        "sale_type", "type", "auction_type", "sale",
-    ])
-
-    sale_type = "foreclosure"
-    if sale_type_raw:
-        if "tax" in sale_type_raw.lower() or "deed" in sale_type_raw.lower():
-            sale_type = "tax_deed"
-
-    return {
-        "identifier": identifier,
-        "address": _get([
-            "address", "property_address", "property",
-        ]),
-        "sale_date": _get([
-            "sale_date", "auction_date", "date",
-        ]),
-        "sale_type": sale_type,
-        "judgment_amount": _currency(_get([
-            "judgment_amount", "judgment", "final_judgment",
-        ])),
-        "opening_bid": _currency(_get([
-            "opening_bid", "minimum_bid", "bid",
-        ])),
-        "assessed_value": _currency(_get([
-            "assessed_value", "assessed", "appraised_value",
-        ])),
-        "market_value": _currency(_get([
-            "market_value", "market",
-        ])),
-        "plaintiff": _get([
-            "plaintiff", "plaintiff_name",
-        ]),
-        "cert_holder": _get([
-            "cert_holder", "certificate_holder",
-        ]),
-        "property_type": _get([
-            "property_type", "type", "use",
-        ]),
-        "beds": _int_val(_get(["beds", "bedrooms"])),
-        "baths": _int_val(_get(["baths", "bathrooms"])),
-        "sqft": _int_val(_get(["sqft", "sq_ft", "square_feet", "living_area"])),
-        "year_built": _int_val(_get(["year_built", "built"])),
-        "photo_url": _get(["photo_url", "photo", "image"]),
-    }
-
-
-def _parse_po_html(html: str, county_slug: str) -> list[dict]:
-    """Fallback HTML parser for PropertyOnion listings.
-
-    Looks for common patterns: .property-card, table rows, data attributes.
-    """
-    listings = []
-
-    # Pattern 1: Look for table rows with auction data
-    row_pattern = re.compile(
-        r'<tr[^>]*>(.*?)</tr>',
-        re.IGNORECASE | re.DOTALL,
-    )
-    cell_pattern = re.compile(
-        r'<td[^>]*>(.*?)</td>',
-        re.IGNORECASE | re.DOTALL,
-    )
-
-    rows = row_pattern.findall(html)
-    for row_html in rows:
-        cells = cell_pattern.findall(row_html)
-        if len(cells) >= 3:
-            # Strip HTML from cells
-            clean_cells = [
-                re.sub(r'<[^>]+>', '', c).strip()
-                for c in cells
-            ]
-
-            # Try to identify if this is an auction listing
-            has_case = any(
-                re.match(r'\d{2,4}-\d{4}-\w{2}', c) for c in clean_cells
-            )
-            if has_case:
-                listing = {
-                    "identifier": clean_cells[0] if len(clean_cells) > 0 else None,
-                    "address": clean_cells[1] if len(clean_cells) > 1 else None,
-                    "sale_date": clean_cells[2] if len(clean_cells) > 2 else None,
-                    "sale_type": "foreclosure",
-                }
-                if county_slug == "orange" and is_timeshare(listing):
-                    continue
-                listings.append(listing)
-
-    return listings
-
-
-def extract_po_total_count(md: str) -> Optional[int]:
-    """Extract total listing count from paginator text in markdown."""
-    patterns = [
-        r"(?:Showing|Displaying)\s+\d+\s+(?:to|of)\s+\d+\s+of\s+(\d+)",
-        r"(\d+)\s+(?:results?|listings?|properties|records)",
-        r"Page\s+\d+\s+of\s+(\d+)",
-        r"Total:\s*(\d+)",
-    ]
-    for p in patterns:
-        m = re.search(p, md, re.IGNORECASE)
-        if m:
-            return int(m.group(1))
-    return None
-
-
-def scrape_po_county(county_slug: str) -> dict:
-    """Scrape PropertyOnion for a single county. Returns result dict."""
-    result = {
-        "county": county_slug,
-        "total_count": 0,
-        "listings": [],
-        "success": False,
-        "error": None,
-        "pages_scraped": 0,
-    }
-
-    for attempt in range(1, MAX_PO_RETRIES + 1):
-        try:
-            log.info(
-                f"[{county_slug.upper()}] PO scrape attempt {attempt}/{MAX_PO_RETRIES}"
-            )
-            raw = _firecrawl_scrape(county_slug, page=1)
-
-            data = raw.get("data", raw)
-            md = data.get("markdown", "")
-            html = data.get("html", "")
-
-            # Check if login succeeded
-            login_failed = any(
-                indicator in md.lower()
-                for indicator in [
-                    "sign in", "log in", "login", "forgot password",
-                    "create account", "register",
-                ]
-            ) and not any(
-                indicator in md.lower()
-                for indicator in [
-                    "logout", "sign out", "my account", "dashboard",
-                    "property search", "results",
-                ]
-            )
-
-            if login_failed and attempt < MAX_PO_RETRIES:
-                log.warning(
-                    f"[{county_slug.upper()}] Login appears to have failed, retrying..."
-                )
-                time.sleep(5)
-                continue
-
-            # Log first response for debugging
-            if attempt == 1:
-                log.info(f"[{county_slug.upper()}] Response markdown preview:")
-                log.info(md[:500] if md else "(empty)")
-
-            listings = parse_po_markdown(md, html, county_slug)
-            total = extract_po_total_count(md) or len(listings)
-
-            result["listings"] = listings
-            result["total_count"] = total
-            result["pages_scraped"] = 1
-            result["success"] = True
-
-            # Handle pagination if total > listings on page 1
-            if total > len(listings) and len(listings) > 0:
-                items_per_page = len(listings)
-                total_pages = (total + items_per_page - 1) // items_per_page
-                total_pages = min(total_pages, 10)  # Safety cap
-
-                for page in range(2, total_pages + 1):
-                    time.sleep(INTER_PAGE_DELAY)
-                    try:
-                        page_raw = _firecrawl_scrape(county_slug, page=page)
-                        page_data = page_raw.get("data", page_raw)
-                        page_md = page_data.get("markdown", "")
-                        page_html = page_data.get("html", "")
-                        page_listings = parse_po_markdown(
-                            page_md, page_html, county_slug
-                        )
-                        if not page_listings:
-                            break
-                        result["listings"].extend(page_listings)
-                        result["pages_scraped"] += 1
-                        log.info(
-                            f"[{county_slug.upper()}] Page {page}: "
-                            f"{len(page_listings)} listings"
-                        )
-                    except Exception as e:
-                        log.warning(
-                            f"[{county_slug.upper()}] Page {page} failed: {e}"
-                        )
-                        break
-
-            log.info(
-                f"[{county_slug.upper()}] PO scrape complete: "
-                f"{len(result['listings'])} listings across "
-                f"{result['pages_scraped']} pages"
-            )
-            return result
-
-        except Exception as e:
-            log.warning(
-                f"[{county_slug.upper()}] Attempt {attempt} failed: {e}"
-            )
-            if attempt < MAX_PO_RETRIES:
-                time.sleep(5)
-
-    result["error"] = "All PO scrape attempts failed"
-    log.error(f"[{county_slug.upper()}] {result['error']}")
-    return result
-
-
-def scrape_all_po_counties(
-    counties: Optional[list[str]] = None,
+def _convert_playwright_to_po_data(
+    pw_data: dict, approach: str,
 ) -> dict[str, dict]:
-    """Scrape all counties from PropertyOnion."""
-    counties = counties or ACTIVE_COUNTIES
-    po_data = {}
+    """Convert Playwright scraper output to po_data format for compare_parity().
 
-    for county in counties:
-        po_data[county] = scrape_po_county(county)
-        if county != counties[-1]:
-            time.sleep(INTER_COUNTY_DELAY)
+    Playwright returns: {county: {sale_type: {date: [listings]}}}
+    compare_parity expects: {county: {listings: [...], success: bool, ...}}
+    """
+    po_data = {}
+    for county, type_data in pw_data.items():
+        listings = []
+        for sale_type, date_groups in type_data.items():
+            for date_str, items in date_groups.items():
+                for item in items:
+                    # Ensure standard fields
+                    item.setdefault("sale_type", sale_type)
+                    item.setdefault("sale_date", date_str)
+                    # Map 'address' to work with compare_parity
+                    if "identifier" not in item and "address" in item:
+                        item["identifier"] = item["address"]
+                    listings.append(item)
+
+        po_data[county] = {
+            "county": county,
+            "total_count": len(listings),
+            "listings": listings,
+            "success": len(listings) > 0,
+            "error": None,
+            "pages_scraped": 1,
+            "approach": approach,
+        }
 
     return po_data
+
+
+def _convert_browserless_to_po_data(
+    bl_results: dict[str, dict],
+) -> dict[str, dict]:
+    """Convert Browserless results to po_data format."""
+    po_data = {}
+    for county, result in bl_results.items():
+        if "error" in result:
+            po_data[county] = {
+                "county": county, "total_count": 0, "listings": [],
+                "success": False, "error": result["error"],
+                "pages_scraped": 0, "approach": "browserless",
+            }
+            continue
+
+        raw_listings = result.get("listings", [])
+        listings = []
+        for raw in raw_listings:
+            listing = {
+                "identifier": raw.get("identifier") or raw.get("id", ""),
+                "address": raw.get("address", ""),
+                "sale_date": raw.get("sale_date", ""),
+                "sale_type": "foreclosure",
+                "judgment_amount": None,
+                "opening_bid": None,
+                "plaintiff": raw.get("plaintiff", ""),
+            }
+            # Parse amounts from raw text
+            if raw.get("judgment_amount"):
+                try:
+                    listing["judgment_amount"] = float(
+                        re.sub(r"[^0-9.]", "", raw["judgment_amount"])
+                    )
+                except (ValueError, TypeError):
+                    pass
+            if raw.get("opening_bid"):
+                try:
+                    listing["opening_bid"] = float(
+                        re.sub(r"[^0-9.]", "", raw["opening_bid"])
+                    )
+                    listing["sale_type"] = "tax_deed"
+                except (ValueError, TypeError):
+                    pass
+            if listing.get("identifier") or listing.get("address"):
+                listings.append(listing)
+
+        po_data[county] = {
+            "county": county,
+            "total_count": len(listings),
+            "listings": listings,
+            "success": len(listings) > 0,
+            "error": None,
+            "pages_scraped": 1,
+            "approach": "browserless",
+        }
+
+    return po_data
+
+
+def get_propertyonion_data(
+    counties: Optional[list[str]] = None,
+) -> dict[str, dict]:
+    """Scrape PropertyOnion with fallback chain:
+    1. Playwright (best for Angular SPA)
+    2. Browserless CDP (fallback)
+    3. Apify with residential proxy (last resort)
+
+    Returns po_data in format expected by compare_parity():
+    {county: {listings: [...], success: bool, total_count: int, ...}}
+    """
+    counties = counties or ACTIVE_COUNTIES
+
+    # ── Approach 1: Playwright ────────────────────────────────────────
+    try:
+        print("  Attempting PropertyOnion scrape via Playwright...")
+        from scrapers.po_scraper_playwright import run_playwright_scrape
+        data = run_playwright_scrape()
+
+        total = sum(
+            len(items)
+            for county_data in data.values()
+            for sale_type in county_data.values()
+            for items in sale_type.values()
+        )
+
+        if total > 0:
+            print(f"  Playwright SUCCESS: {total} total listings")
+            # Approach 1 worked — documented in code comment
+            return _convert_playwright_to_po_data(data, "playwright")
+        else:
+            print("  Playwright returned 0 listings — trying Approach 2")
+
+    except Exception as e:
+        print(f"  Playwright failed: {str(e)[:200]}")
+        print("  Trying Approach 2: Browserless...")
+
+    # ── Approach 2: Browserless CDP ───────────────────────────────────
+    try:
+        browserless_key = os.environ.get("BROWSERLESS_API_KEY", "")
+        if not browserless_key:
+            print("  BROWSERLESS_API_KEY not set — skipping Approach 2")
+            raise RuntimeError("No Browserless API key")
+
+        from scrapers.po_scraper_browserless import (
+            scrape_propertyonion_via_browserless,
+        )
+
+        bl_results = {}
+        for county in counties:
+            path = COUNTY_PO_PATHS.get(county)
+            if not path:
+                continue
+            print(f"  Browserless: scraping {county}...")
+            result = scrape_propertyonion_via_browserless(path)
+            bl_results[county] = result
+            time.sleep(5)
+
+        po_data = _convert_browserless_to_po_data(bl_results)
+        total = sum(r["total_count"] for r in po_data.values())
+
+        if total > 0:
+            print(f"  Browserless SUCCESS: {total} total listings")
+            return po_data
+        else:
+            print("  Browserless returned 0 listings — trying Approach 3")
+
+    except Exception as e:
+        print(f"  Browserless failed: {str(e)[:200]}")
+        print("  Trying Approach 3: Apify...")
+
+    # ── Approach 3: Apify Actor ───────────────────────────────────────
+    try:
+        apify_token = os.environ.get("APIFY_API_TOKEN", "")
+        if not apify_token:
+            print("  APIFY_API_TOKEN not set — skipping Approach 3")
+            raise RuntimeError("No Apify API token")
+
+        from scrapers.po_scraper_apify import scrape_via_apify
+        results = scrape_via_apify("https://propertyonion.com")
+
+        # Parse Apify results into po_data format
+        po_data = {}
+        for county in counties:
+            po_data[county] = {
+                "county": county, "total_count": 0, "listings": [],
+                "success": False, "error": None,
+                "pages_scraped": 0, "approach": "apify",
+            }
+
+        if isinstance(results, list):
+            for item in results:
+                url = item.get("url", "")
+                for county, path in COUNTY_PO_PATHS.items():
+                    if path.lower() in url.lower():
+                        item_listings = item.get("listings", [])
+                        po_data[county]["listings"].extend(item_listings)
+                        po_data[county]["total_count"] += len(item_listings)
+                        po_data[county]["success"] = len(item_listings) > 0
+                        break
+
+        total = sum(r["total_count"] for r in po_data.values())
+        if total > 0:
+            print(f"  Apify SUCCESS: {total} total listings")
+            return po_data
+        else:
+            print("  Apify returned 0 listings")
+
+    except Exception as e:
+        print(f"  Apify failed: {str(e)[:200]}")
+
+    # ── All 3 approaches failed ───────────────────────────────────────
+    log.error("ALL 3 PropertyOnion scraping approaches failed")
+    log.error(
+        "Check /tmp/po_login_debug.png and /tmp/po_login_failed.png "
+        "for debug screenshots"
+    )
+    return {
+        county: {
+            "county": county,
+            "total_count": 0,
+            "listings": [],
+            "success": False,
+            "error": "All 3 PO approaches failed",
+            "pages_scraped": 0,
+        }
+        for county in counties
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1029,7 +852,7 @@ def store_parity_baseline(
     description = json.dumps({
         "zonewise_count": total_zw,
         "propertyonion_count": total_po,
-        "verified_against": "PropertyOnion via Firecrawl",
+        "verified_against": "PropertyOnion via Playwright/Browserless/Apify",
         "verification_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "gaps_at_verification": len(gaps),
         "gaps_closed": gap_results.get("gaps_closed", 0),
@@ -1109,7 +932,7 @@ def main():
             )
         else:
             print("\n--- PHASE 1: Scraping PropertyOnion ---")
-            po_data = scrape_all_po_counties(counties)
+            po_data = get_propertyonion_data(counties)
     else:
         print("\n--- PHASE 1: SKIPPED (--skip-po) ---")
 
