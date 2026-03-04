@@ -34,74 +34,152 @@ def login_propertyonion(page) -> bool:
     Returns True if login successful.
     """
     print("Navigating to PropertyOnion login...")
-    page.goto(f"{PROPERTYONION_BASE}/login", wait_until="networkidle")
+    page.goto(f"{PROPERTYONION_BASE}/login", wait_until="networkidle",
+              timeout=60000)
 
     # Wait for Angular to fully hydrate the login form
     page.wait_for_load_state("networkidle")
-    time.sleep(2)  # extra buffer for Angular initialization
+    time.sleep(3)  # extra buffer for Angular initialization
 
-    # Try multiple selector patterns for email field
+    # Debug: log page state
+    print(f"  Page URL: {page.url}")
+    print(f"  Page title: {page.title()}")
+    # Log all input fields on the page for debugging
+    try:
+        inputs_info = page.evaluate("""
+            Array.from(document.querySelectorAll('input')).map(inp => ({
+                type: inp.type,
+                name: inp.name,
+                placeholder: inp.placeholder,
+                id: inp.id,
+                visible: inp.offsetParent !== null,
+                attrs: Array.from(inp.attributes).map(a => a.name).join(',')
+            }))
+        """)
+        print(f"  Input fields found: {len(inputs_info)}")
+        for inp in inputs_info[:6]:
+            print(f"    type={inp['type']} name={inp['name']} "
+                  f"placeholder={inp['placeholder']} visible={inp['visible']} "
+                  f"attrs=[{inp['attrs']}]")
+    except Exception as e:
+        print(f"  Input inspection failed: {str(e)[:100]}")
+
+    # PrimeNG/Angular forms: use fill() which handles overlays and
+    # dispatches proper input events. Use .first to disambiguate when
+    # multiple elements match (PrimeNG renders duplicate inputs).
     email_selectors = [
         "input[type='email']",
         "input[name='email']",
-        "input[placeholder*='email' i]",
-        "input[placeholder*='Email' i]",
-        "#email",
-        ".email-input",
         "input[formcontrolname='email']",  # Angular reactive forms
-        "input[ng-model*='email']",        # AngularJS
+        "input[pinputtext][placeholder*='email' i]",  # PrimeNG
+        "input[placeholder*='email' i]",
+        "#email",
     ]
 
-    email_field = None
+    email_filled = False
     for selector in email_selectors:
         try:
-            page.wait_for_selector(selector, timeout=3000)
-            email_field = selector
+            loc = page.locator(selector).first
+            loc.wait_for(timeout=3000, state="visible")
             print(f"  Email field found: {selector}")
+            # fill() dispatches input+change events — works with Angular
+            loc.fill(os.environ.get("PROPERTYONION_EMAIL", ""))
+            email_filled = True
+            print("  Email filled successfully")
             break
-        except PlaywrightTimeout:
+        except (PlaywrightTimeout, Exception) as e:
+            print(f"  Selector {selector}: {str(e)[:80]}")
             continue
 
-    if not email_field:
+    if not email_filled:
+        # Last resort: JS injection
+        print("  Trying JS injection for email field...")
+        email_val = os.environ.get("PROPERTYONION_EMAIL", "")
+        try:
+            page.evaluate(f"""
+                const inputs = document.querySelectorAll('input');
+                for (const inp of inputs) {{
+                    const ph = (inp.placeholder || '').toLowerCase();
+                    const nm = (inp.name || '').toLowerCase();
+                    const tp = (inp.type || '').toLowerCase();
+                    if (ph.includes('email') || nm.includes('email') || tp === 'email') {{
+                        inp.value = '{email_val}';
+                        inp.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        inp.dispatchEvent(new Event('change', {{bubbles: true}}));
+                        break;
+                    }}
+                }}
+            """)
+            email_filled = True
+            print("  Email filled via JS injection")
+        except Exception as js_err:
+            print(f"  JS injection failed: {str(js_err)[:100]}")
+
+    if not email_filled:
         print("  ERROR: Email field not found with any selector")
         print("  Page title:", page.title())
         print("  Page URL:", page.url)
-        # Take screenshot for debugging
         page.screenshot(path="/tmp/po_login_debug.png")
         print("  Debug screenshot saved to /tmp/po_login_debug.png")
         return False
 
-    # Fill email — use type() for Angular which triggers input events
-    page.click(email_field)
-    page.type(email_field, os.environ.get("PROPERTYONION_EMAIL", ""), delay=50)
+    time.sleep(0.5)
 
-    # Password field
+    # Password field — same approach: fill() + .first
     password_selectors = [
         "input[type='password']",
         "input[name='password']",
+        "input[formcontrolname='password']",
+        "p-password input",  # PrimeNG password component
         "input[placeholder*='password' i]",
         "#password",
-        "input[formcontrolname='password']",
     ]
 
-    password_field = None
+    password_filled = False
     for selector in password_selectors:
         try:
-            page.wait_for_selector(selector, timeout=2000)
-            password_field = selector
+            loc = page.locator(selector).first
+            loc.wait_for(timeout=2000, state="visible")
             print(f"  Password field found: {selector}")
+            loc.fill(os.environ.get("PROPERTYONION_PASSWORD", ""))
+            password_filled = True
+            print("  Password filled successfully")
             break
-        except PlaywrightTimeout:
+        except (PlaywrightTimeout, Exception) as e:
+            print(f"  Selector {selector}: {str(e)[:80]}")
             continue
 
-    if not password_field:
+    if not password_filled:
+        # JS injection fallback for password
+        print("  Trying JS injection for password field...")
+        pw_val = os.environ.get("PROPERTYONION_PASSWORD", "")
+        try:
+            page.evaluate(f"""
+                const inputs = document.querySelectorAll('input');
+                for (const inp of inputs) {{
+                    if (inp.type === 'password' ||
+                        (inp.name || '').toLowerCase().includes('password') ||
+                        (inp.placeholder || '').toLowerCase().includes('password')) {{
+                        inp.value = '{pw_val}';
+                        inp.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        inp.dispatchEvent(new Event('change', {{bubbles: true}}));
+                        break;
+                    }}
+                }}
+            """)
+            password_filled = True
+            print("  Password filled via JS injection")
+        except Exception as js_err:
+            print(f"  JS injection failed: {str(js_err)[:100]}")
+
+    if not password_filled:
         print("  ERROR: Password field not found")
+        page.screenshot(path="/tmp/po_login_debug.png")
         return False
 
-    page.click(password_field)
-    page.type(password_field, os.environ.get("PROPERTYONION_PASSWORD", ""), delay=50)
+    time.sleep(0.5)
 
-    # Submit — try button selectors
+    # Submit — try button selectors with force=True for PrimeNG overlays
     submit_selectors = [
         "button[type='submit']",
         "input[type='submit']",
@@ -109,21 +187,23 @@ def login_propertyonion(page) -> bool:
         "button:has-text('Sign In')",
         "button:has-text('Log In')",
         ".login-btn",
+        "p-button button",  # PrimeNG button
         ".submit-btn",
     ]
 
     submitted = False
     for selector in submit_selectors:
         try:
-            page.click(selector, timeout=2000)
+            loc = page.locator(selector).first
+            loc.click(timeout=3000, force=True)
             submitted = True
             print(f"  Submit clicked: {selector}")
             break
-        except PlaywrightTimeout:
+        except (PlaywrightTimeout, Exception):
             continue
 
     if not submitted:
-        # Try pressing Enter on the password field
+        # Try pressing Enter
         page.keyboard.press("Enter")
         submitted = True
         print("  Submit via Enter key")
