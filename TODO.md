@@ -48,10 +48,24 @@ Find first unchecked item. Execute. Mark [x] when done. Push.
   - VERIFIED: Hillsborough 3 FC scraped + inserted, Orange 5 FC scraped, Brevard 0 FC (only TD currently)
   - Legacy migration: 309 rows from old schema (289 FC, 20 TD) — VERIFIED
 
-- [ ] **TASK-006** `[HOOK:action][tax_deed]` Build `scrapers/tax_deed_scraper.py`
-  - AgentQL targeting county tax deed portals (same 5 counties)
-  - RealTDM integration for cert chain (outstanding_certs_total)
-  - Output: multi_county_auctions rows with sale_type="tax_deed"
+- [x] **TASK-006** `[HOOK:action][both]` PropertyOnion parity + Brevard source map fix (2026-03-03)
+  - Schema: 3 columns renamed (sale_date→auction_date, courthouse_or_online→auction_venue, portal_url→auction_url), 19 new columns added (36 total)
+  - source_map.py: Brevard FC=in_person (clerk HTML), all others=online (RealForeclose AJAX)
+  - shared.py: Extracted common AJAX parsing (expand_shorthand, parse_auction_items, insert_rows)
+  - foreclosure_scraper.py: Brevard routes to brevardclerk.us HTML table (90 active rows), non-Brevard to RealForeclose AJAX
+  - tax_deed_scraper.py: Full TAXDEED AJAX scraper with cert_number dedup (RealForeclose currently 503 maintenance)
+  - bcpao_enricher.py: BCPAO GIS Layer 5 enrichment — 150/182 Brevard rows enriched (82%)
+    - Fields: parcel_id, assessed_value, market_value, property_type, sqft, lot_size, city, zip, photo_url, bcpao_url, acclaimweb_url
+    - Note: beds/baths/year_built NOT on GIS Layer 5 (need bcpao.us building API, currently Cloudflare-blocked)
+    - 32 rows skipped: "0 UNKNOWN" addresses (vacant land/estates with no address)
+
+- [x] **PARITY-AUDIT** `[HOOK:action][both]` PropertyOnion parity audit script (2026-03-03)
+  - scrapers/parity_audit.py: 9-phase audit (PO Firecrawl scrape, ZW query, parity report, gap closing, field coverage, exclusive intel, baseline storage)
+  - .github/workflows/parity_audit.yml: weekly Monday + manual trigger, all 5 secrets
+  - ZW-only dry run verified: 241 rows, HOA detection (18 rows), BCPAO enriched 230/241 (95.4%)
+  - Field coverage: Brevard FC address 100%, assessed 93.2%, type 93.2%
+  - Known blockers: beds=0% (Cloudflare building API), non-Brevard plaintiff/judgment gaps
+  - Full PO authenticated audit requires GitHub Actions `workflow_dispatch`
 
 - [ ] **TASK-007** `[HOOK:trigger][both]` Deploy scrapers to Modal
   - Cron: 11 PM EST (0 4 * * * UTC)
@@ -163,3 +177,12 @@ Find first unchecked item. Execute. Mark [x] when done. Push.
 - [x] 14 prompt files stored in agents/prompts/ (2026-03-03)
 - [x] Legacy migration — 309 rows from old schema (289 FC, 20 TD) (2026-03-03)
 - [x] Foreclosure scraper — AJAX-based, 5 counties, dedup, dual HTML layout support (2026-03-03)
+- [x] PropertyOnion parity — 36-column schema, Brevard source fix, BCPAO enrichment (2026-03-03)
+- [x] 4-county expansion — Hillsborough, Orange, Polk, Palm Beach scraped + enriched (2026-03-03)
+  - Enricher architecture: enricher_base, enricher_factory, enricher_fl_parcels, 4 per-county enrichers
+  - enrich_all_counties.py driver script with --dry-run support
+  - shared.py: Management API SQL fallback for insert/dedup
+  - source_map.py: clerk_url + PA config per county
+  - Results: 241 total rows, 100% enrichment on all expansion counties
+  - Palm Beach subdomain fix: palmbeach.realforeclose.com (not pbcgov)
+  - County names normalized to lowercase across all rows

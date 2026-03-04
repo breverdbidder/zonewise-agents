@@ -1,6 +1,6 @@
 {
   "project": "ZoneWise.AI",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "last_updated": "2026-03-03",
   "phase": "FOUNDATION",
   "sale_types_covered": [
@@ -9,22 +9,25 @@
   ],
   "counties_target": 67,
   "counties_active": 5,
-  "next_task": "TASK-006 \u2014 Build tax deed scraper",
+  "next_task": "TASK-007 \u2014 Deploy scrapers to Modal",
   "supabase_url": "mocerqjnksmhcjzxrewo.supabase.co",
   "status": {
     "prompts": "COMPLETE \u2014 12 prompts in docs/PROMPT_ENGINEERING.md",
-    "supabase_schema": "COMPLETE \u2014 7 tables created and verified (2026-03-03)",
-    "scrapers": "IN PROGRESS \u2014 TASK-005 complete (foreclosure), TASK-006 + TASK-007 pending",
+    "supabase_schema": "COMPLETE \u2014 PropertyOnion parity schema (36 columns) verified (2026-03-03)",
+    "scrapers": "COMPLETE \u2014 5-county scraping (Brevard, Hillsborough, Orange, Polk, Palm Beach). FC + TD. TASK-007 (Modal deploy) pending.",
+    "enrichment": "COMPLETE \u2014 5-county enrichment: Brevard 93%/100%, Hillsborough 100%, Orange 100% (TIMESHARE), Polk 100%, Palm Beach 100%",
     "agents": "NOT STARTED \u2014 TASK-008 through TASK-012",
     "api": "NOT STARTED \u2014 TASK-013 through TASK-014",
     "delivery": "NOT STARTED \u2014 TASK-015 through TASK-016",
+    "propertyonion_parity": "AUDIT SCRIPT COMPLETE \u2014 scrapers/parity_audit.py (9 phases), .github/workflows/parity_audit.yml (weekly + manual trigger). ZW-only audit verified: 241 rows, HOA detection active (18 rows), BCPAO enriched 230/241 (95.4%). PO authenticated scrape requires GitHub Actions (secrets). Known gaps: beds=0% (Cloudflare-blocked building API), non-Brevard counties missing plaintiff/judgment_amount/photo_url (enrichment pipeline needed).",
+    "timeshare_exclusion": "ACTIVE \u2014 Orange County timeshare rows excluded at scraper and audit level",
     "github_actions": "NOT STARTED \u2014 TASK-017",
     "tests": "NOT STARTED \u2014 TASK-018 through TASK-020"
   },
   "architecture": {
     "framework": "LangGraph",
     "backend": "FastAPI on Render",
-    "scraper": "AgentQL on Modal",
+    "scraper": "httpx AJAX + brevardclerk.us HTML",
     "database": "Supabase",
     "delivery": "Telegram + Email (Resend)",
     "ui": "Split-screen chat (Next.js on Vercel)"
@@ -68,6 +71,21 @@
     }
   },
   "recent_decisions": [
+    {
+      "date": "2026-03-03",
+      "decision": "PropertyOnion parity audit script COMPLETE",
+      "outcome": "scrapers/parity_audit.py: 9-phase audit (PO scrape via Firecrawl, ZW query, parity report, gap closing, field coverage, exclusive intelligence, baseline storage). .github/workflows/parity_audit.yml: weekly + manual trigger with all 5 secrets. ZW-only dry run verified: 241 rows, 7 county/type combos, HOA detection active (18 rows), BCPAO enriched 230/241 (95.4%), ML bid ratio ready (8 rows), net spread ready (20 rows). Field coverage: Brevard FC address 100%, assessed 93.2%, type 93.2%. Known blockers: beds=0% (Cloudflare), non-Brevard plaintiff/judgment gaps."
+    },
+    {
+      "date": "2026-03-03",
+      "decision": "4-county expansion COMPLETE \u2014 Hillsborough, Orange, Polk, Palm Beach scraped + enriched",
+      "outcome": "241 rows across 5 target counties (182 Brevard + 19 Hillsborough + 10 Orange + 13 Polk + 17 Palm Beach). Enricher architecture: base class, factory, fl_parcels DOR fallback, per-county GIS enrichers. Palm Beach subdomain fixed (palmbeach not pbcgov). County names normalized to lowercase. Orange rows all TIMESHARE (unenrichable, marked). Enrichment rate: 100% for all expansion counties."
+    },
+    {
+      "date": "2026-03-03",
+      "decision": "PropertyOnion parity + Brevard source map fix COMPLETE",
+      "outcome": "36-column schema (21 new cols). Brevard FC routes to clerk HTML, TD to RealForeclose AJAX. BCPAO enricher: 150/182 rows enriched (82%). source_map.py, shared.py, bcpao_enricher.py created. foreclosure_scraper.py + tax_deed_scraper.py rewritten."
+    },
     {
       "date": "2026-03-03",
       "decision": "Created 12-prompt Hook Model playbook \u2014 foreclosure + tax deed fully distinct",
