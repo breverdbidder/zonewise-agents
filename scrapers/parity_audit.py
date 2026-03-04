@@ -418,7 +418,13 @@ def compare_parity(
     zw_data: dict,
     counties: list[str],
 ) -> list[dict]:
-    """Compare PropertyOnion vs ZoneWise per county/sale_type."""
+    """Compare PropertyOnion vs ZoneWise per county/sale_type.
+
+    NOTE: PO identifiers are addresses, ZW identifiers are case/cert numbers.
+    Set-based matching is impossible — comparison is COUNT-BASED ONLY.
+    Gap closing re-scrapes from RealForeclose and inserts missing rows by
+    case/cert number, not by PO address matching.
+    """
     report = []
 
     for county in counties:
@@ -436,27 +442,18 @@ def compare_parity(
         for sale_type in ["foreclosure", "tax_deed"]:
             po_items = po_by_type[sale_type]
             po_count = len(po_items)
-            po_ids = {
-                normalize_identifier(l["identifier"])
-                for l in po_items
-                if l.get("identifier")
-            }
 
             zw_key = (county, sale_type)
             zw_info = zw_data.get(zw_key, {})
             zw_count = zw_info.get("count", 0)
-            zw_ids = zw_info.get("identifiers", set())
 
-            missing_from_zw = po_ids - zw_ids
-            extra_in_zw = zw_ids - po_ids
+            # Count-based gap (PO and ZW use different identifier systems)
             gap = po_count - zw_count
 
             if not po_success:
                 status = "PO_UNAVAILABLE"
-            elif gap == 0 and len(missing_from_zw) == 0:
-                status = "PARITY"
-            elif gap < 0:
-                status = "AHEAD"
+            elif gap <= 0:
+                status = "PARITY" if gap == 0 else "AHEAD"
             else:
                 status = "GAP"
 
@@ -469,8 +466,8 @@ def compare_parity(
                 "gap_pct": (
                     round(abs(gap) / po_count * 100, 1) if po_count > 0 else 0
                 ),
-                "missing_from_zw": sorted(missing_from_zw),
-                "extra_in_zw": sorted(extra_in_zw),
+                "missing_from_zw": [],  # Cannot determine — different ID systems
+                "extra_in_zw": [],
                 "status": status,
                 "po_available": po_success,
             })
@@ -513,13 +510,8 @@ def print_parity_report(report: list[dict]) -> None:
             f"[{icon}] {gap_str}"
         )
 
-        if r["missing_from_zw"]:
-            print(f"  MISSING FROM ZONEWISE: {r['missing_from_zw']}")
-        if r["extra_in_zw"]:
-            extra_display = r["extra_in_zw"][:20]
-            print(f"  IN ZONEWISE NOT IN PO: {extra_display}")
-            if len(r["extra_in_zw"]) > 20:
-                print(f"    ... and {len(r['extra_in_zw']) - 20} more")
+        # Note: PO uses address identifiers, ZW uses case/cert numbers
+        # Individual identifier matching is not possible across systems
 
     # Summary
     gaps = [r for r in report if r["status"] == "GAP"]
@@ -555,13 +547,20 @@ async def close_gaps(
     report: list[dict],
     dry_run: bool = False,
 ) -> dict:
-    """For each gap, re-fetch from RealForeclose source and insert."""
+    """For each count gap, re-scrape from RealForeclose and insert missing rows.
+
+    PO and ZW use different identifier systems (addresses vs case/cert numbers),
+    so we cannot match individual PO listings to ZW rows. Instead:
+    1. Re-scrape the full county from RealForeclose
+    2. Fetch existing ZW identifiers for this county/sale_type
+    3. Insert any scraped rows whose case/cert number is NOT already in ZW
+    """
     from scrapers.foreclosure_scraper import scrape_foreclosures
     from scrapers.tax_deed_scraper import scrape_tax_deeds
 
-    gaps = [r for r in report if r["status"] == "GAP" and r["missing_from_zw"]]
+    gaps = [r for r in report if r["status"] == "GAP" and r["gap"] > 0]
     results = {
-        "gaps_found": sum(len(r["missing_from_zw"]) for r in gaps),
+        "gaps_found": sum(r["gap"] for r in gaps),
         "gaps_closed": 0,
         "gaps_failed": 0,
         "details": [],
@@ -571,44 +570,63 @@ async def close_gaps(
         log.info("No gaps to close")
         return results
 
-    log.info(f"Closing {results['gaps_found']} gaps across {len(gaps)} county/type combos")
+    log.info(
+        f"Closing {results['gaps_found']} count gaps "
+        f"across {len(gaps)} county/type combos"
+    )
 
     for r in gaps:
         county = r["county"]
         sale_type = r["sale_type"]
-        missing = set(r["missing_from_zw"])
+        count_gap = r["gap"]
 
         log.info(
             f"Closing gap: {county} | {sale_type} | "
-            f"{len(missing)} missing identifiers"
+            f"PO={r['po_count']} vs ZW={r['zw_count']} (gap={count_gap})"
         )
 
         # Re-scrape the full county from RealForeclose
+        id_field = "case_number" if sale_type == "foreclosure" else "cert_number"
         try:
             if sale_type == "foreclosure":
                 scraped = await scrape_foreclosures(county_slug=county)
             else:
                 scraped = await scrape_tax_deeds(county_slug=county)
+            log.info(
+                f"  RealForeclose returned {len(scraped)} {sale_type} "
+                f"rows for {county}"
+            )
         except Exception as e:
             log.error(f"Scraper failed for {county}/{sale_type}: {e}")
-            results["gaps_failed"] += len(missing)
-            for ident in missing:
-                results["details"].append({
-                    "county": county,
-                    "sale_type": sale_type,
-                    "identifier": ident,
-                    "status": f"scraper_error: {e}",
-                })
+            results["gaps_failed"] += count_gap
+            results["details"].append({
+                "county": county,
+                "sale_type": sale_type,
+                "identifier": "*",
+                "status": f"scraper_error: {e}",
+            })
             continue
 
-        # Filter to only the missing identifiers
-        id_field = "case_number" if sale_type == "foreclosure" else "cert_number"
+        # Fetch existing ZW identifiers for this county/sale_type
+        existing_ids = await fetch_existing_identifiers(
+            county, sale_type, id_field,
+        )
+        existing_normalized = {
+            normalize_identifier(i) for i in existing_ids if i
+        }
+        log.info(
+            f"  ZW already has {len(existing_normalized)} {sale_type} "
+            f"identifiers for {county}"
+        )
+
+        # Find rows in RealForeclose not already in ZW
         new_rows = []
         for row in scraped:
             row_id = normalize_identifier(row.get(id_field, "") or "")
-            if row_id in missing:
+            if row_id and row_id not in existing_normalized:
                 new_rows.append(row)
-                missing.discard(row_id)
+
+        log.info(f"  Found {len(new_rows)} new rows to insert for {county}")
 
         if new_rows:
             if dry_run:
@@ -632,17 +650,18 @@ async def close_gaps(
                     "identifier": row.get(id_field, ""),
                     "status": "closed" if not dry_run else "dry_run",
                 })
-
-        # Log any still-missing identifiers
-        for ident in missing:
-            results["gaps_failed"] += 1
+        else:
+            log.info(
+                f"  No new rows found — RealForeclose may not have "
+                f"all PO listings (different data sources)"
+            )
+            results["gaps_failed"] += count_gap
             results["details"].append({
                 "county": county,
                 "sale_type": sale_type,
-                "identifier": ident,
-                "status": "not_found_in_source",
+                "identifier": "*",
+                "status": "no_new_rows_from_source",
             })
-            log.warning(f"  NOT FOUND in RealForeclose: {ident}")
 
     log.info(
         f"Gap closing complete: {results['gaps_closed']} closed, "
