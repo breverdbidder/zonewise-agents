@@ -66,6 +66,16 @@ async def shutdown():
     if _http_client and not _http_client.is_closed:
         await _http_client.aclose()
 
+def sanitize_param(value: str) -> str:
+    """Sanitize user input for Supabase REST query parameters.
+    Removes characters that could break or inject query strings."""
+    if not value:
+        return ""
+    # Remove query string control characters
+    return re.sub(r'[%&=\\/'";\n\r\t]', '', value).strip()[:200]
+
+
+
 
 # ═══════════════════════════════════════════════════════════════
 # ANTHROPIC CLIENT (Claude Sonnet 4.5 for complex queries)
@@ -306,7 +316,7 @@ async def agent_list_districts(entities: Dict) -> Dict:
 
     # Resolve jurisdiction ID
     juris = await sb_query("jurisdictions",
-        f"select=id,name,county,data_completeness,municode_url&or=(name.ilike.%25{jurisdiction}%25,county.ilike.%25{jurisdiction}%25)",
+        f"select=id,name,county,data_completeness,municode_url&or=(name.ilike.%25{sanitize_param(jurisdiction)}%25,county.ilike.%25{sanitize_param(jurisdiction)}%25)",
         limit=10)
 
     if not juris:
@@ -372,9 +382,9 @@ async def agent_district_detail(entities: Dict) -> Dict:
                 "suggestions": ["What are the setbacks for RS-1?", "Show me RR-65 requirements"]}
 
     # Build query
-    params = f"select=*&code=ilike.{code}"
+    params = f"select=*&code=ilike.{sanitize_param(code)}"
     if jurisdiction:
-        juris = await sb_query("jurisdictions", f"select=id&name=ilike.%25{jurisdiction}%25", limit=1)
+        juris = await sb_query("jurisdictions", f"select=id&name=ilike.%25{sanitize_param(jurisdiction)}%25", limit=1)
         if juris:
             params += f"&jurisdiction_id=eq.{juris[0]['id']}"
 
@@ -546,7 +556,7 @@ async def agent_county_stats(entities: Dict) -> Dict:
     if county:
         # County-specific stats
         juris = await sb_query("jurisdictions",
-            f"select=id,name,county,data_completeness&county=ilike.{county}&order=name",
+            f"select=id,name,county,data_completeness&county=ilike.{sanitize_param(county)}&order=name",
             limit=200)
 
         jids = [str(j["id"]) for j in juris]
@@ -690,7 +700,7 @@ async def agent_address_query(query: str, entities: Dict) -> Dict:
     juris_rows = await sb_query(
         "jurisdictions",
         f"select=id,name,county,data_completeness,municode_url"
-        f"&or=(name.ilike.%25{jurisdiction}%25,county.ilike.%25{jurisdiction}%25)",
+        f"&or=(name.ilike.%25{sanitize_param(jurisdiction)}%25,county.ilike.%25{sanitize_param(jurisdiction)}%25)",
         limit=5
     )
 
@@ -989,7 +999,7 @@ async def chat_stream(req: ChatRequest):
             if entities.get("jurisdiction"):
                 jname = entities["jurisdiction"]
                 jurs = await sb_query("jurisdictions",
-                    f"select=id,name,county&name=ilike.%25{jname}%25", limit=3)
+                    f"select=id,name,county&name=ilike.%25{sanitize_param(jname)}%25", limit=3)
                 if jurs:
                     context_parts.append(f"Jurisdictions: {json.dumps(jurs)}")
                     for j in jurs[:1]:
@@ -1001,7 +1011,7 @@ async def chat_stream(req: ChatRequest):
             if entities.get("zoning_code"):
                 zcode = entities["zoning_code"]
                 dists = await sb_query("zoning_districts",
-                    f"select=id,code,name,description,category&code=ilike.{zcode}", limit=3)
+                    f"select=id,code,name,description,category&code=ilike.{sanitize_param(zcode)}", limit=3)
                 if dists:
                     context_parts.append(f"District data: {json.dumps(dists)}")
                     for d in dists[:1]:
