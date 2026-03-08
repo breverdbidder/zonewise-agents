@@ -133,7 +133,7 @@ async def _scrape_tax_deeds(
         # Step 1: Get calendar/preview for tax deed dates
         log.info(f"[{county_name}] Fetching tax deed calendar...")
         preview_url = (
-            f"{base_url}?zaction=AUCTION&Zmethod=PREVIEW&ESSION=TaxDeed"
+            f"{base_url}?zaction=AUCTION&Zmethod=PREVIEW&AESSION=TaxDeed"
         )
         resp = await client.get(preview_url)
         resp.raise_for_status()
