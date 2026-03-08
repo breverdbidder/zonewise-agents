@@ -301,17 +301,20 @@ async def _insert_rows_rest(rows: list[dict]) -> int:
     url = f"{SUPABASE_URL}/rest/v1/multi_county_auctions"
 
     inserted = 0
-    for i in range(0, len(rows), 100):
-        batch = rows[i : i + 100]
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=batch, headers=headers)
-            if resp.status_code in (200, 201):
-                inserted += len(batch)
-            else:
-                log.error(
-                    f"Supabase insert failed (batch {i}): "
-                    f"{resp.status_code} — {resp.text}"
-                )
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for i in range(0, len(rows), 100):
+            batch = rows[i : i + 100]
+            try:
+                resp = await client.post(url, json=batch, headers=headers)
+                if resp.status_code in (200, 201):
+                    inserted += len(batch)
+                else:
+                    log.error(
+                        f"Supabase insert failed (batch {i}): "
+                        f"{resp.status_code} — {resp.text}"
+                    )
+            except Exception as e:
+                log.error(f"Supabase insert exception (batch {i}): {e}")
 
     log.info(f"Inserted {inserted}/{len(rows)} rows (REST)")
     return inserted
