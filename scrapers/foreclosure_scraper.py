@@ -182,6 +182,7 @@ async def _fetch_brevard_clerk() -> list[dict]:
             "county": "brevard",
             "case_number": case_number,
             "plaintiff": plaintiff,
+            "defendant": defendant,
             "property_address": None,  # Not on clerk page — enriched via BECA
             "judgment_amount": None,   # Not on clerk page — enriched via BECA
             "parcel_id": None,         # Not on clerk page — enriched via BCPAO
@@ -371,6 +372,7 @@ async def _scrape_realforeclose(
                                 if auction_date
                                 else None
                             ),
+                            "auction_time": "09:00:00",  # Default RealForeclose start time
                             "auction_venue": "online",
                             "auction_url": auction_url,
                             "realforeclose_url": auction_url,
