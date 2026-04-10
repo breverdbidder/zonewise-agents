@@ -11,7 +11,7 @@ Verified: 2026-03-03
     resolve to the same RealForeclose instance. Using pbcgov (county government
     subdomain) as canonical. Confirmed via browser on 2026-03-03.
   - Brevard foreclosure: brevardclerk.us/foreclosure-sales-list redirects to
-    vweb2.brevardclerk.us/Foreclosures/foreclosure_sales.html (static HTML table).
+    www.brevardclerk.us/Foreclosures/foreclosure_sales.html (static HTML table).
 """
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ COUNTY_SOURCE_MAP = {
         "foreclosure": {
             "method": "in_person",
             "source_url": "https://www.brevardclerk.us/foreclosure-sales-list",
-            "actual_url": "http://vweb2.brevardclerk.us/Foreclosures/foreclosure_sales.html",
+            "actual_url": "http://www.brevardclerk.us/Foreclosures/foreclosure_sales.html",
             "auction_venue": "in_person",
             "platform": "brevard_clerk",
             "auction_time": "11:00",

@@ -69,7 +69,7 @@ log = logging.getLogger("foreclosure_scraper")
 #   auction_url = direct link to listing on brevard.realforeclose.com
 
 BREVARD_CLERK_URL = (
-    "http://vweb2.brevardclerk.us/Foreclosures/foreclosure_sales.html"
+    "http://www.brevardclerk.us/Foreclosures/foreclosure_sales.html"
 )
 
 
