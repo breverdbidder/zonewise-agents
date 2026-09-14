@@ -22,5 +22,5 @@ Open implementation PR from branch `security-gate`. Gitleaks scans PR diff on pu
 - No remediation of the 34 pre-existing zizmor high findings in this repo (separate fix wave).
 - No changes to deploy workflows, runner config, or Actions secrets.
 
-## Estimated Complexity
+## Estimated Complexity: Low
 Low - 4 additive config files, no code changes, pattern already proven green on 5 repos.
