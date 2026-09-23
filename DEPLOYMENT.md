@@ -1,130 +1,119 @@
-# ZoneWise Agents - Render Deployment Guide
+# ZoneWise Agents — Deployment Guide
 
-## 🚀 ONE-TIME SETUP (2 minutes)
+**Primary host: Google Cloud Run (free tier, scale-to-zero).**  
+Render is deprecated for this service (workspace billing dispute / suspension). Do **not** use Render.
 
-### Step 1: Create Render Service
-1. Go to https://render.com
-2. Click "New +" → "Web Service"
-3. Click "Build and deploy from a Git repository"
-4. Select GitHub repo: `breverdbidder/zonewise-agents`
-5. Configure:
-   - **Name**: `zonewise-agents`
-   - **Runtime**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn server.main:app --host 0.0.0.0 --port $PORT`
-   - **Plan**: Free (or Starter $7/mo for production)
+---
 
-### Step 2: Add Environment Variables
-In Render dashboard → Environment section, add:
+## Google Cloud Run (FREE)
 
-```bash
-SUPABASE_URL=https://mocerqjnksmhcjzxrewo.supabase.co
-SUPABASE_KEY=[from GitHub Secrets or Supabase dashboard]
-ANTHROPIC_API_KEY=[your Anthropic API key]
-GOOGLE_API_KEY=[optional - for Google services]
+### Why Cloud Run
+- Scale-to-zero (`--min-instances=0`) → $0 when idle
+- HTTPS URL auto-provisioned
+- Docker/FastAPI friendly; `PORT` injected by platform
+- Generous free tier (CPU/memory/requests) for low traffic
+
+### Dockerfile
+Image listens on `$PORT` (fallback `8000`):
+
+```dockerfile
+CMD uvicorn server.main:app --host 0.0.0.0 --port ${PORT:-8000}
 ```
 
-### Step 3: Get Deploy Hook URL
-1. In Render service settings → "Settings" tab
-2. Scroll to "Deploy Hook"
-3. Copy the URL (looks like: `https://api.render.com/deploy/srv-xxx...`)
+Health: `GET /health` → `{"status":"healthy"|"degraded", ...}`.  
+`status` is `healthy` when `SUPABASE_KEY` is set (server reads **`SUPABASE_KEY`**, not `SUPABASE_SERVICE_KEY`).
 
-### Step 4: Add to GitHub Secrets
-```bash
-# Using GitHub CLI or web UI
-gh secret set RENDER_DEPLOY_HOOK_URL --repo breverdbidder/zonewise-agents
-
-# Or via web:
-# GitHub repo → Settings → Secrets → Actions → New secret
-# Name: RENDER_DEPLOY_HOOK_URL
-# Value: [paste deploy hook URL]
-```
-
----
-
-## ✅ AFTER SETUP - 100% Automated
-
-Every push to `main` branch will:
-1. Trigger GitHub Action
-2. Call Render Deploy Hook
-3. Render rebuilds and deploys automatically
-4. Available at: `https://zonewise-agents.onrender.com`
-
----
-
-## 🔍 Verification
-
-### Test Health Endpoint
-```bash
-curl https://zonewise-agents.onrender.com/health
-# Expected: {"status": "healthy", "version": "1.1.0"}
-```
-
-### Test Streaming Chat
-```bash
-curl -X POST https://zonewise-agents.onrender.com/api/query/stream \
-  -H "Content-Type: application/json" \
-  -d '{"query":"What are setbacks for R-1 in Brevard County?"}'
-```
-
-### Test Stats API
-```bash
-curl https://zonewise-agents.onrender.com/api/stats
-```
-
----
-
-## 📊 Monitoring
-
-- **Render Dashboard**: https://dashboard.render.com/
-- **Logs**: Render Dashboard → zonewise-agents → Logs tab
-- **Metrics**: Auto-tracked by Render (CPU, memory, response times)
-
----
-
-## 🔄 Manual Deploy (if needed)
+### One-shot local deploy (after gcloud login)
 
 ```bash
-# Trigger via GitHub Actions UI
-# Go to: Actions → Deploy to Render → Run workflow
+export PATH="$HOME/google-cloud-sdk/bin:$PATH"
+gcloud auth login
+gcloud auth application-default login
 
-# Or via CLI
-gh workflow run deploy-render.yml --repo breverdbidder/zonewise-agents
+# Export app secrets into the shell (never commit). Map names carefully:
+export SUPABASE_URL='...'
+export SUPABASE_SERVICE_KEY='...'   # mapped to SUPABASE_KEY in container
+export ANTHROPIC_API_KEY='...'
+# optional: TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID
+
+./cloudrun/deploy.sh zonewise-agents us-east1
 ```
 
+Or equivalent flags:
+
+```bash
+gcloud run deploy zonewise-agents \
+  --source=. \
+  --region=us-east1 \
+  --platform=managed \
+  --allow-unauthenticated \
+  --memory=512Mi \
+  --cpu=1 \
+  --min-instances=0 \
+  --max-instances=3 \
+  --port=8000 \
+  --env-vars-file=<(printf 'SUPABASE_URL=%s\nSUPABASE_KEY=%s\nANTHROPIC_API_KEY=%s\n' \
+      "$SUPABASE_URL" "$SUPABASE_SERVICE_KEY" "$ANTHROPIC_API_KEY")
+```
+
+Reference: `cloudrun/service.yaml`, `cloudrun/deploy.sh`.
+
+### GitHub Actions auto-deploy
+Workflow template: `cloudrun/deploy-cloudrun.yml` — copy to `.github/workflows/deploy-cloudrun.yml` once a GitHub token with `workflow` scope is available (or paste via GitHub UI).
+
+1. Create a GCP project (e.g. `zonewise-agents`) and **link a billing account** (required even for free tier).
+2. Enable APIs: Cloud Run, Cloud Build, Artifact Registry (script/Action does this).
+3. Add GitHub Actions secrets (repo → Settings → Secrets):
+
+| Secret | Purpose |
+|--------|---------|
+| `GCP_PROJECT_ID` | GCP project id |
+| `GCP_SA_KEY` **or** WIF trio | Auth (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT`) |
+| `SUPABASE_URL` | already set |
+| `SUPABASE_SERVICE_KEY` | already set → mapped to `SUPABASE_KEY` |
+| `ANTHROPIC_API_KEY` | already set |
+
+4. Merge to `main` or run **Actions → Deploy to Cloud Run → Run workflow**.
+5. Until `GCP_*` secrets exist, the workflow **skips** (green) with a setup message.
+
+### Cost / free-tier posture
+- `--min-instances=0` (scale-to-zero)
+- 512Mi memory, 1 CPU, max 3 instances
+- Idle ≈ **$0/month** within Always Free allowances
+- Billing account must still be attached to the project
+
+### Verify
+```bash
+curl https://YOUR-SERVICE-XXXX-ue.a.run.app/health
+# Expect: {"status":"healthy","database":"connected",...} or degraded if key missing
+```
+
+### Point zonewise-web at Cloud Run
+In `zonewise-web`:
+1. Set Cloudflare Worker / Pages secret `AGENTS_BACKEND_URL` = Cloud Run HTTPS URL (no trailing slash).
+2. Optionally change default fallback in `app/api/chat/route.ts` from `https://zonewise-agents.onrender.com` to the Cloud Run URL.
+
 ---
 
-## 💰 Cost Estimate
+## Legacy: Render (DO NOT USE)
 
-- **Free Tier**: $0/month (spins down after 15min inactivity, 750hrs/month)
-- **Starter**: $7/month (always on, better performance)
-- **Production**: Recommended Starter for ZoneWise launch
+Workspace suspended / unpaid invoice dispute. Kept only for historical reference.
 
----
+Previous URL: `https://zonewise-agents.onrender.com`  
+Config: `render.yaml`, workflow `deploy-render.yml` (leave disabled / ignore).
 
-## 🐛 Troubleshooting
-
-### Build Fails
-- Check Python version (should be 3.11)
-- Verify requirements.txt is present
-- Check Render build logs
-
-### Health Check Fails
-- Verify Start Command includes `--host 0.0.0.0`
-- Check PORT environment variable is used
-- Ensure `/health` endpoint returns 200
-
-### API Returns Errors
-- Verify all environment variables are set
-- Check Supabase credentials are correct
-- Test Anthropic API key separately
+### Old Render env mapping
+- Render used `SUPABASE_KEY` directly
+- `.env.example` documents `SUPABASE_SERVICE_KEY` — same value; Cloud Run deploy maps it
 
 ---
 
-## 📝 Next Steps After Deployment
+## Troubleshooting
 
-1. Update zonewise-web to use production API URL
-2. Configure CORS if needed
-3. Set up monitoring/alerts
-4. Load test with expected traffic
-
+| Symptom | Fix |
+|---------|-----|
+| Container won't listen | Ensure Dockerfile uses `${PORT:-8000}` shell form |
+| `/health` → `degraded` / `no_key` | Set `SUPABASE_KEY` (from `SUPABASE_SERVICE_KEY`) |
+| Image build huge / Playwright | Package installs without browsers; `/health` does not need browsers. If build fails, remove `playwright`/`agentql` from runtime image |
+| gcloud auth errors | `gcloud auth login` + `gcloud auth application-default login` on the agent box desktop |
+| Billing required | Enable billing on the GCP project (free tier still applies with min instances 0) |

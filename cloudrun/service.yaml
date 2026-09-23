@@ -1,0 +1,61 @@
+# Cloud Run service definition (reference). Prefer `gcloud run deploy` or the
+# GitHub Action in .github/workflows/deploy-cloudrun.yml for first deploy.
+#
+# Free-tier posture: minScale 0 (scale-to-zero), 512Mi, concurrency 80.
+# Map GitHub secret SUPABASE_SERVICE_KEY -> env SUPABASE_KEY (server.main reads SUPABASE_KEY).
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: zonewise-agents
+  labels:
+    cloud.googleapis.com/location: us-east1
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/zonewise/zonewise-agents:latest
+          ports:
+            - name: http1
+              containerPort: 8000
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: SUPABASE_URL
+                  key: latest
+            - name: SUPABASE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: SUPABASE_SERVICE_KEY
+                  key: latest
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ANTHROPIC_API_KEY
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
