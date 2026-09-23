@@ -59,7 +59,7 @@ gcloud run deploy zonewise-agents \
 Reference: `cloudrun/service.yaml`, `cloudrun/deploy.sh`.
 
 ### GitHub Actions auto-deploy
-Workflow: `.github/workflows/deploy-cloudrun.yml`
+Workflow template: `cloudrun/deploy-cloudrun.yml` — copy to `.github/workflows/deploy-cloudrun.yml` once a GitHub token with `workflow` scope is available (or paste via GitHub UI).
 
 1. Create a GCP project (e.g. `zonewise-agents`) and **link a billing account** (required even for free tier).
 2. Enable APIs: Cloud Run, Cloud Build, Artifact Registry (script/Action does this).
